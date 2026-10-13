@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     public_origin: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     health_timeout_seconds: int = Field(default=2, ge=1, le=10)
+    session_lifetime_hours: int = Field(default=12, ge=1, le=168)
 
     @model_validator(mode="after")
     def validate_infrastructure(self) -> "Settings":
@@ -29,7 +30,13 @@ class Settings(BaseSettings):
         if len(self.session_secret.get_secret_value()) < 32:
             raise ValueError("Session secret must contain at least 32 characters")
         origin = self.public_origin
-        if origin.path != "/" or origin.query or origin.fragment or origin.username:
+        if (
+            origin.path != "/"
+            or origin.query
+            or origin.fragment
+            or origin.username
+            or origin.password
+        ):
             raise ValueError("Public origin must contain only scheme, host, and optional port")
         if origin.scheme != "https":
             if self.environment == "production" or origin.host not in {

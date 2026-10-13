@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 from redis import Redis
 from starlette.exceptions import HTTPException
 
+from researchos.api.auth import router as auth_router
+from researchos.api.errors import ApiError
 from researchos.api.health import router
 from researchos.core.config import Settings
 from researchos.infrastructure.database import build_engine
@@ -34,15 +36,16 @@ def create_app(settings: Settings | None = None, probe: HealthProbe | None = Non
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        engine = None
-        broker = None
+        engine = build_engine(config)
+        broker = Redis.from_url(
+            config.redis_url.get_secret_value(),
+            socket_connect_timeout=config.health_timeout_seconds,
+            socket_timeout=config.health_timeout_seconds,
+        )
+        app.state.engine = engine
+        app.state.broker = broker
+        app.state.settings = config
         if probe is None:
-            engine = build_engine(config)
-            broker = Redis.from_url(
-                config.redis_url.get_secret_value(),
-                socket_connect_timeout=config.health_timeout_seconds,
-                socket_timeout=config.health_timeout_seconds,
-            )
             app.state.health = InfrastructureHealth(engine, broker)
         else:
             app.state.health = probe
@@ -66,6 +69,16 @@ def create_app(settings: Settings | None = None, probe: HealthProbe | None = Non
     @app.middleware("http")
     async def request_metadata(request: Request, call_next):
         request.state.request_id = uuid.uuid4().hex
+        if (
+            request.method in {"POST", "PATCH", "PUT"}
+            and request.url.path != "/api/v1/papers/upload"
+        ):
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > 16 * 1024:
+                    return error_response(request, 413, "request_too_large", "Request is too large")
+            request._body = bytes(body)
         try:
             response = await call_next(request)
         except Exception as exc:
@@ -85,13 +98,20 @@ def create_app(settings: Settings | None = None, probe: HealthProbe | None = Non
 
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException):
-        return error_response(
-            request, exc.status_code, f"http_{exc.status_code}", HTTPStatus(exc.status_code).phrase
+        response = error_response(
+            request,
+            exc.status_code,
+            exc.code if isinstance(exc, ApiError) else f"http_{exc.status_code}",
+            exc.detail if isinstance(exc, ApiError) else HTTPStatus(exc.status_code).phrase,
         )
+        if exc.headers:
+            response.headers.update(exc.headers)
+        return response
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):
         return error_response(request, 422, "validation_error", "Request validation failed")
 
     app.include_router(router)
+    app.include_router(auth_router)
     return app
