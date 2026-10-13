@@ -1,8 +1,10 @@
 import uuid
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from researchos.api.dependencies import Authenticated, Database
@@ -19,6 +21,78 @@ from researchos.services.papers import owned_paper
 from researchos.services.resources import cursor_filter, cursor_scope, encode_cursor
 
 router = APIRouter(prefix="/api/v1", tags=["Document extraction"])
+
+
+class VersionRead(BaseModel):
+    id: uuid.UUID
+    paper_id: uuid.UUID
+    state: Literal["queued", "processing", "ready", "partially_ready", "failed"]
+    parser_name: str
+    parser_version: str
+    parser_config: dict
+    metadata: dict
+    warnings: list[str]
+    created_at: datetime
+    completed_at: datetime | None
+    page_count: int
+    figure_count: int
+
+
+class VersionList(BaseModel):
+    items: list[VersionRead]
+    next_cursor: str | None
+
+
+class PageRead(BaseModel):
+    id: uuid.UUID
+    document_version_id: uuid.UUID
+    page_number: int
+    text: str
+    text_status: Literal["available", "no_text", "failed"]
+    width: float
+    height: float
+    warnings: list[str]
+
+
+class SpanRead(BaseModel):
+    page_id: uuid.UUID
+    page_number: int
+    start_offset: int
+    end_offset: int
+
+
+class SectionRead(BaseModel):
+    id: uuid.UUID
+    kind: str
+    heading: str | None
+    ordinal: int
+    extraction_method: str
+    spans: list[SpanRead]
+
+
+class SectionList(BaseModel):
+    items: list[SectionRead]
+
+
+class FigureRead(BaseModel):
+    id: uuid.UUID
+    paper_id: uuid.UUID
+    document_version_id: uuid.UUID
+    page_id: uuid.UUID
+    ordinal: int
+    caption: str | None
+    caption_start: int | None
+    caption_end: int | None
+    caption_method: str | None
+    bounding_box: list[float] | None
+    extraction_method: str
+    page_number: int
+    file_url: str
+
+
+class FigureList(BaseModel):
+    items: list[FigureRead]
+    next_offset: int | None
 
 
 def owned_version(db, owner_id, version_id, paper_id=None):
@@ -51,11 +125,12 @@ def version_read(db, version):
         "metadata": version.metadata_json,
         "warnings": version.warnings,
         "created_at": version.created_at,
+        "completed_at": version.completed_at,
         **counts,
     }
 
 
-@router.get("/papers/{paper_id}/document-versions")
+@router.get("/papers/{paper_id}/document-versions", response_model=VersionList)
 def versions(
     paper_id: uuid.UUID,
     request: Request,
@@ -87,12 +162,12 @@ def versions(
     }
 
 
-@router.get("/document-versions/{version_id}")
+@router.get("/document-versions/{version_id}", response_model=VersionRead)
 def version(version_id: uuid.UUID, db: Database, identity: Authenticated):
     return version_read(db, owned_version(db, identity.user.id, version_id))
 
 
-@router.get("/document-versions/{version_id}/pages/{page_number}")
+@router.get("/document-versions/{version_id}/pages/{page_number}", response_model=PageRead)
 def page(version_id: uuid.UUID, page_number: int, db: Database, identity: Authenticated):
     owned_version(db, identity.user.id, version_id)
     row = db.scalar(
@@ -119,7 +194,7 @@ def page(version_id: uuid.UUID, page_number: int, db: Database, identity: Authen
     }
 
 
-@router.get("/document-versions/{version_id}/sections")
+@router.get("/document-versions/{version_id}/sections", response_model=SectionList)
 def sections(version_id: uuid.UUID, db: Database, identity: Authenticated):
     owned_version(db, identity.user.id, version_id)
     rows = list(
@@ -165,7 +240,7 @@ def sections(version_id: uuid.UUID, db: Database, identity: Authenticated):
     }
 
 
-@router.get("/papers/{paper_id}/figures")
+@router.get("/papers/{paper_id}/figures", response_model=FigureList)
 def figures(
     paper_id: uuid.UUID,
     document_version_id: uuid.UUID,
@@ -193,6 +268,7 @@ def figures(
                     key: getattr(row, key)
                     for key in [
                         "id",
+                        "paper_id",
                         "document_version_id",
                         "page_id",
                         "ordinal",
