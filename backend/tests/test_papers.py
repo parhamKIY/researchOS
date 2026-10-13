@@ -20,12 +20,12 @@ pytestmark = [
 ]
 
 
-def pdf_fixture(marker="Fixture"):
+def pdf_fixture(marker="Fixture", padding=0):
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << >> >>",
-        b"<< /Length 0 >>\nstream\n\nendstream",
+        f"<< /Length {padding} >>\nstream\n".encode() + b" " * padding + b"\nendstream",
         f"<< /Producer ({marker}) >>".encode(),
     ]
     data = b"%PDF-1.7\n"

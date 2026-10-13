@@ -105,6 +105,8 @@ services:
       target: test
     profiles: ["test"]
     env_file: .env
+    volumes:
+      - private-files:/app/storage
     environment:
       RESEARCHOS_ENVIRONMENT: test
       RESEARCHOS_RUN_INTEGRATION: "1"
@@ -112,6 +114,8 @@ services:
       api:
         condition: service_healthy
       worker:
+        condition: service_healthy
+      frontend:
         condition: service_healthy
 
 volumes:

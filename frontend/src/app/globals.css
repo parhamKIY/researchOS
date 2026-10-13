@@ -49,6 +49,11 @@ button:disabled { opacity: .55; cursor: wait; }
 .paper-detail h2 { overflow-wrap: anywhere; }
 .pdf-viewer { width: 100%; height: 620px; border: 1px solid var(--line); border-radius: 8px; background: #edf2eb; margin-top: 14px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+.pdf-preview { border-top: 1px solid var(--line); margin-top: 20px; }
+.pdf-preview .toolbar label { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 11px; }
+.pdf-preview select { width: auto; padding: 6px; }
+.pdf-canvas-area { background: #e5ebe2; padding: 20px; border-radius: 8px; overflow: auto; max-height: 700px; text-align: center; }
+.pdf-canvas-area canvas { display: block; background: white; max-width: 100%; height: auto; margin: auto; box-shadow: 0 2px 10px #18393018; }
 @media (max-width: 600px) { .upload-form, .title-form { align-items: stretch; flex-direction: column; } .paper-row { gap: 10px; } .paper-state { max-width: 55px; line-height: 1.5; } .pdf-viewer { height: 420px; } }
 @media (max-width: 600px) { .library-panel { padding: 18px; } .account { gap: 8px; font-size: 10px; } .section-heading .primary-button { font-size: 12px; padding: 10px; } }
 a:focus-visible, button:focus-visible { outline: 3px solid #96b49c; outline-offset: 4px; }

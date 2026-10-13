@@ -24,6 +24,7 @@ out/
 dist/
 build/
 *.tsbuildinfo
+frontend/public/pdfjs/
 
 # Runtime documents, private uploads, and logs
 data/

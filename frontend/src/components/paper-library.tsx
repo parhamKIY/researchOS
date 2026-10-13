@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiFailure, type Session } from "@/lib/api";
 import { revisionHeaders } from "@/components/project-library";
+import { PdfViewer } from "@/components/pdf-viewer";
 
 type Paper = { id: string; title: string | null; original_name: string; byte_size: number; project_ids: string[]; revision: number };
 type Page = { items: Paper[]; next_cursor: string | null };
@@ -128,7 +129,7 @@ export function PaperLibrary({ session, expired, project }: { session: Session; 
         <button className="refresh-button" onClick={() => open(selected)} disabled={busy}>Reload details</button>
         <button className="refresh-button" onClick={() => setDeleting(true)} disabled={busy}>Delete paper</button></div>
       {deleting && <div className="delete-confirm"><p>Delete this paper and its original file from every project?</p><button className="danger-button" onClick={remove} disabled={busy}>Confirm paper deletion</button><button onClick={() => setDeleting(false)} disabled={busy}>Cancel</button></div>}
-      <iframe className="pdf-viewer" key={selected.id} title="Original paper PDF" src={`/api/v1/papers/${selected.id}/file`} />
+      <PdfViewer key={selected.id} paperId={selected.id} />
       <p className="muted">If your browser cannot preview this document, download the original PDF.</p>
     </section>}
   </section>;
