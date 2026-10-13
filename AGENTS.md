@@ -33,9 +33,12 @@
 
 - The user explicitly requires implementation on the local `master` branch.
 - The configured remote is named `master`; the remote destination branch is also `master`.
-- The user authorizes committing and pushing each completed section without repeated approval.
+- The user authorizes checkpoint commits and one batch push without repeated approval.
+- Commit immediately when each meaningful checkpoint is complete and verified; do not accumulate an entire milestone before committing.
+- Make exactly one push at the end of a work batch to send all its checkpoint commits together. Never push after every checkpoint.
+- Split the existing uncommitted foundation changes into coherent topical commits honestly; do not backdate commits or imply they were recorded during the original implementation.
 - Before committing, inspect the diff, run checks appropriate to the change, and stage only intended files.
-- Use meaningful commit messages and push with `git push master master` after upstream setup.
+- Use meaningful commit messages; at the end of a work batch push with `git push master master`.
 - Never force-push or overwrite unrelated work. Report an actual commit or push failure accurately.
 
 ## Communication
