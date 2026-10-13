@@ -4,12 +4,13 @@ ENV PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PATH="/app/.venv/
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
+ENV PYTHONPATH="/app/src"
 COPY src ./src
 COPY migrations ./migrations
 COPY alembic.ini ./
-RUN uv sync --frozen --no-dev && useradd --create-home --uid 10001 researchos
+RUN useradd --create-home --uid 10001 researchos && mkdir /app/storage && chown researchos:researchos /app/storage
 FROM base AS test
-RUN uv sync --frozen --group dev
+RUN uv sync --frozen --group dev --no-install-project
 COPY tests ./tests
 USER researchos
 CMD ["pytest", "-p", "no:cacheprovider"]
