@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
@@ -10,7 +11,7 @@ from test_papers import pdf_fixture
 
 from researchos.cli import provision_user
 from researchos.core.config import Settings
-from researchos.domain.models import PaperFile, User
+from researchos.domain.models import PaperFigure, PaperFile, User
 from researchos.infrastructure.database import build_engine
 from researchos.infrastructure.storage import LocalFileStore
 
@@ -67,6 +68,13 @@ def test_live_frontend_proxy_large_upload_and_duplicate_race():
             paper_id = identifiers.pop()
             read = client.get(f"/api/v1/papers/{paper_id}")
             assert read.json()["byte_size"] == len(data)
+            job_id = read.json()["latest_ingestion_job_id"]
+            for _ in range(80):
+                job = client.get(f"/api/v1/jobs/{job_id}").json()
+                if job["state"] not in {"queued", "running"}:
+                    break
+                time.sleep(0.5)
+            assert job["state"] in {"completed", "partially_completed", "failed"}
             with httpx.Client(
                 base_url="http://frontend:3000", cookies=client.cookies, timeout=30
             ) as reopened:
@@ -93,6 +101,9 @@ def test_live_frontend_proxy_large_upload_and_duplicate_race():
         with Session(engine) as db:
             keys = list(
                 db.scalars(select(PaperFile.storage_key).where(PaperFile.owner_id == user_id))
+            )
+            keys += list(
+                db.scalars(select(PaperFigure.storage_key).where(PaperFigure.owner_id == user_id))
             )
             for key in keys:
                 LocalFileStore(settings.storage_root).delete(key)
