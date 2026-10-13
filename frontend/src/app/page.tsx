@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SystemStatus } from "@/components/system-status";
 
 export default function Home() {
   return (
@@ -15,6 +16,7 @@ export default function Home() {
           <p className="eyebrow">A foundation for better research</p>
           <h1>Your research,<br /><span>connected to its evidence.</span></h1>
           <p className="intro">A place to understand scientific papers and build lasting knowledge.<br />Your workspace starts with a reliable foundation.</p>
+          <SystemStatus />
           <section className="milestone-panel">
             <div><p className="eyebrow">Current milestone · 01</p><h2>Building the foundation</h2><p>The application shell and infrastructure checks are available.<br />Paper uploads and AI analysis arrive in the next milestones.</p></div>
             <a className="docs-link" href="/api/docs">Explore the API <span aria-hidden="true">↗</span></a>
