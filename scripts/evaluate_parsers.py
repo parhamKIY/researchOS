@@ -5,12 +5,14 @@ import hashlib
 import importlib.metadata
 import json
 import re
+import tempfile
 import time
 from pathlib import Path
 
 
 def evaluate(path: Path, parser: str, anchors: list[str]) -> dict:
     started = time.perf_counter()
+    extra = {}
     if parser == "pypdf":
         from pypdf import PdfReader
 
@@ -29,6 +31,21 @@ def evaluate(path: Path, parser: str, anchors: list[str]) -> dict:
                 images += len(page.images)
                 page.close()
         version = importlib.metadata.version("pdfplumber")
+    elif parser == "selected":
+        from researchos.processing.contracts import ParseLimits
+        from researchos.processing.runner import parse_in_process
+
+        with tempfile.TemporaryDirectory(prefix="researchos-evaluation-") as work:
+            parsed = parse_in_process(path, Path(work), ParseLimits())
+        text = [page.text for page in parsed.pages]
+        images = len(parsed.figures)
+        version = parsed.parser_version
+        extra = {
+            "state": parsed.state,
+            "warnings": parsed.warnings,
+            "sections": len(parsed.sections),
+            "pages_with_warnings": sum(bool(page.warnings) for page in parsed.pages),
+        }
     else:
         from docling_parse.pdf_parser import DoclingPdfParser
 
@@ -51,14 +68,20 @@ def evaluate(path: Path, parser: str, anchors: list[str]) -> dict:
         "image_objects": images,
         "elapsed_seconds": round(time.perf_counter() - started, 3),
         "anchors": [
-            {"text": anchor, "found": anchor.casefold() in normalized} for anchor in anchors
+            {"text": anchor, "found": anchor.casefold() in normalized}
+            for anchor in anchors
         ],
+        **extra,
     }
 
 
 def main():
     cli = argparse.ArgumentParser()
-    cli.add_argument("--parser", choices=["pypdf", "pdfplumber", "docling-native"], required=True)
+    cli.add_argument(
+        "--parser",
+        choices=["pypdf", "pdfplumber", "docling-native", "selected"],
+        required=True,
+    )
     cli.add_argument("--pdf", type=Path, required=True)
     cli.add_argument("--anchor", action="append", default=[])
     cli.add_argument("--output", type=Path, required=True)
@@ -66,7 +89,7 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     try:
         result = evaluate(args.pdf, args.parser, args.anchor)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - redact failures from optional parser implementations
         result = {
             "parser": args.parser,
             "filename": args.pdf.name,

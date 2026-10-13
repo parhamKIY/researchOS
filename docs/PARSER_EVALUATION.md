@@ -40,6 +40,16 @@ Individual local elapsed times included interpreter imports and ranged from 0.67
 
 ## Selected initial behavior
 
+The complete selected adapter was also executed in the Linux test container through its actual bounded child-process runner (60 seconds, 1024 MiB), rather than only calling text extraction directly. All three runs produced `ready` within the adapter's supported scope, with non-empty text on every page and the explicit global warnings below. Attention produced 15 pages, 7 candidate sections and 3 decoded raster images; RAG produced 19/9/2; Mamba produced 36/7/0. Both configured anchors were found on each source. Individual elapsed observations were 4.603, 1.847 and 3.357 seconds respectively; they remain uncontrolled single runs and do not measure semantic accuracy. The original bytes matched the hashes above.
+
+Reproduce against a supplied local PDF in an environment with the locked backend dependencies:
+
+```powershell
+python scripts/evaluate_parsers.py --parser selected --pdf path/to/paper.pdf --output data/parser-evaluation/selected.json --anchor "Expected heading"
+```
+
+The record contains counts, warnings and anchor matches, not extracted paper content. Candidate-native runs use `--parser pypdf`, `pdfplumber` or `docling-native`; the latter requires its separate optional environment.
+
 - Preserve normalized page text with one-based page IDs and exact section offsets; headings are pattern-based candidates, not scientific interpretation.
 - Keep PDF Info and detected DOI strings explicitly unverified; do not overwrite user titles or invent missing authors, dates or identifiers.
 - Decode embedded raster images to PNG, keeping page references and bounding boxes when the source object can be mapped. Original PDF remains unchanged. Vector figure/table reconstruction is unavailable.
