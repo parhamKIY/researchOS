@@ -1,3 +1,4 @@
+import asyncio
 import re
 import uuid
 from datetime import datetime
@@ -106,7 +107,15 @@ async def upload(
     if project_id:
         await run_in_threadpool(owned_project, db, identity.user.id, project_id)
     store = LocalFileStore(request.app.state.settings.storage_root)
-    accepted = await store.accept(request.stream(), request.app.state.settings.max_upload_bytes)
+    try:
+        async with asyncio.timeout(90):
+            accepted = await store.accept(
+                request.stream(), request.app.state.settings.max_upload_bytes
+            )
+    except TimeoutError:
+        raise ApiError(
+            408, "upload_timeout", "Upload timed out; retry with the same upload key"
+        ) from None
     retained = False
     try:
         status, body, retained = await run_in_threadpool(

@@ -181,7 +181,7 @@ def cleanup_storage(db: Session, store: FileStore, limit: int = 20) -> int:
     tasks = list(
         db.scalars(
             select(StorageCleanup)
-            .order_by(StorageCleanup.created_at)
+            .order_by(StorageCleanup.attempt, StorageCleanup.created_at)
             .limit(limit)
             .with_for_update(skip_locked=True)
         )

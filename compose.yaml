@@ -70,6 +70,18 @@ services:
       timeout: 8s
       retries: 6
 
+  maintenance:
+    <<: *backend
+    command: ["python", "-m", "researchos.tasks.maintenance"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib,time; p=pathlib.Path('/tmp/researchos-maintenance-ready'); exit(0 if p.exists() and time.time()-p.stat().st_mtime<120 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 4
+
   frontend:
     build:
       context: ./frontend

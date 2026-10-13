@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 
 import pytest
@@ -10,6 +11,7 @@ from test_auth import account_client as account_client
 from researchos.cli import provision_user
 from researchos.domain.models import PaperFile, StorageCleanup
 from researchos.infrastructure.storage import LocalFileStore
+from researchos.services.maintenance import reconcile_storage
 from researchos.services.papers import cleanup_storage
 
 pytestmark = [
@@ -178,3 +180,22 @@ def test_cleanup_failure_is_durable_and_retryable(library, monkeypatch):
         assert cleanup_storage(db, LocalFileStore(storage)) == 1
         assert db.scalar(select(StorageCleanup)) is None
     assert list(storage.iterdir()) == []
+
+
+def test_reconciliation_keeps_referenced_and_recent_files(library):
+    client, connection, headers, storage = library
+    upload(client, headers)
+    retained = next(storage.glob("*.pdf"))
+    old = time.time() - 25 * 3600
+    os.utime(retained, (old, old))
+    abandoned = storage / (uuid.uuid4().hex + ".pdf")
+    abandoned.write_bytes(b"abandoned fixture")
+    os.utime(abandoned, (old, old))
+    pending = storage / (uuid.uuid4().hex + ".tmp")
+    pending.write_bytes(b"active temporary fixture")
+    unrelated = storage / "unrelated.txt"
+    unrelated.write_bytes(b"fixture")
+    os.utime(unrelated, (old, old))
+    with Session(connection, join_transaction_mode="create_savepoint") as db:
+        assert reconcile_storage(db, LocalFileStore(storage)) == {"cleaned": 0, "orphaned": 1}
+    assert retained.exists() and pending.exists() and unrelated.exists() and not abandoned.exists()

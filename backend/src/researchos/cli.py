@@ -8,6 +8,8 @@ from researchos.core.config import Settings
 from researchos.core.security import hash_password, normalize_email
 from researchos.domain.models import User
 from researchos.infrastructure.database import build_engine
+from researchos.infrastructure.storage import LocalFileStore
+from researchos.services.maintenance import reconcile_storage
 
 
 def provision_user(db: Session, email: str, password: str) -> User:
@@ -22,13 +24,25 @@ def provision_user(db: Session, email: str, password: str) -> User:
 
 def main():
     parser = argparse.ArgumentParser(description="ResearchOS local account provisioning")
-    parser.add_argument("command", choices=["create-user"])
-    parser.add_argument("--email", required=True)
+    parser.add_argument("command", choices=["create-user", "cleanup-storage"])
+    parser.add_argument("--email")
     args = parser.parse_args()
+    engine = build_engine(Settings())
+    if args.command == "cleanup-storage":
+        try:
+            with Session(engine) as db:
+                result = reconcile_storage(db, LocalFileStore(Settings().storage_root))
+            print(f"Cleaned pending={result['cleaned']} abandoned={result['orphaned']}")
+        except Exception:
+            parser.exit(1, "Storage maintenance failed\n")
+        finally:
+            engine.dispose()
+        return
+    if not args.email:
+        parser.error("--email is required for create-user")
     password = getpass.getpass("Password (12-256 characters): ")
     if password != getpass.getpass("Confirm password: "):
         parser.exit(1, "Passwords do not match\n")
-    engine = build_engine(Settings())
     try:
         with Session(engine) as db, db.begin():
             provision_user(db, args.email, password)
