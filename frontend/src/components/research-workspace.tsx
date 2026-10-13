@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, ApiFailure, type Session } from "@/lib/api";
 import { SystemStatus } from "@/components/system-status";
+import { ProjectLibrary } from "@/components/project-library";
 
 export function ResearchWorkspace() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [project, setProject] = useState("");
+  const expired = useCallback(() => { setSession(null); setProject(""); setError("Your session expired. Please sign in again."); }, []);
 
   async function restore() {
     try { setSession(await api<Session>("/auth/session")); setError(""); }
@@ -77,7 +80,9 @@ export function ResearchWorkspace() {
               <p className="muted">Accounts are created through local setup. Public registration is unavailable.</p>
               {error && <button className="refresh-button" onClick={restore} disabled={busy}>Retry connection</button>}
             </section>
-          ) : <><p className="intro">Your private workspace is ready.</p><SystemStatus /></>}
+          ) : <><p className="intro">Your private workspace is ready.</p>
+            <ProjectLibrary key={session.user.id} session={session} expired={expired} selected={project} select={setProject} />
+            <details className="infrastructure-details"><summary>Infrastructure status</summary><SystemStatus /></details></>}
           <footer>ResearchOS <span>Traceable sources. Reproducible analysis.</span></footer>
         </div>
       </main>
