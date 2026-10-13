@@ -13,7 +13,6 @@ from researchos.core.config import Settings
 from researchos.domain.models import DocumentPage, PaperFigure, PaperFile, User
 from researchos.infrastructure.database import build_engine
 from researchos.infrastructure.storage import LocalFileStore
-from researchos.tasks.celery_app import app
 
 pytestmark = [
     pytest.mark.integration,
@@ -36,6 +35,8 @@ def wait_job(client, identifier):
 
 
 def test_live_celery_version_history_private_evidence_and_retry(tmp_path):
+    from researchos.tasks.celery_app import app
+
     settings = Settings()
     engine = build_engine(settings)
     suffix = uuid.uuid4().hex

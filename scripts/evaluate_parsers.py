@@ -68,8 +68,7 @@ def evaluate(path: Path, parser: str, anchors: list[str]) -> dict:
         "image_objects": images,
         "elapsed_seconds": round(time.perf_counter() - started, 3),
         "anchors": [
-            {"text": anchor, "found": anchor.casefold() in normalized}
-            for anchor in anchors
+            {"text": anchor, "found": anchor.casefold() in normalized} for anchor in anchors
         ],
         **extra,
     }
