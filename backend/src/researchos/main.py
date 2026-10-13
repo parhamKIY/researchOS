@@ -7,11 +7,13 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from redis import Redis
+from sqlalchemy.exc import OperationalError
 from starlette.exceptions import HTTPException
 
 from researchos.api.auth import router as auth_router
 from researchos.api.errors import ApiError
 from researchos.api.health import router
+from researchos.api.papers import router as papers_router
 from researchos.api.projects import router as projects_router
 from researchos.core.config import Settings
 from researchos.infrastructure.database import build_engine
@@ -113,7 +115,14 @@ def create_app(settings: Settings | None = None, probe: HealthProbe | None = Non
     async def validation_error(request: Request, exc: RequestValidationError):
         return error_response(request, 422, "validation_error", "Request validation failed")
 
+    @app.exception_handler(OperationalError)
+    async def database_unavailable(request: Request, exc: OperationalError):
+        return error_response(
+            request, 503, "database_unavailable", "Database is temporarily unavailable"
+        )
+
     app.include_router(router)
     app.include_router(auth_router)
     app.include_router(projects_router)
+    app.include_router(papers_router)
     return app

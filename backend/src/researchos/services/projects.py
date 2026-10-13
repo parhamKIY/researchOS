@@ -1,11 +1,11 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from researchos.api.errors import ApiError
-from researchos.domain.models import Project
+from researchos.domain.models import Paper, PaperProject, Project, User
 from researchos.services.resources import require_revision
 
 
@@ -45,7 +45,16 @@ def change_project(
 
 
 def delete_project(db: Session, owner: uuid.UUID, identifier: uuid.UUID, match: str | None):
+    db.scalar(select(User.id).where(User.id == owner).with_for_update())
     project = owned_project(db, owner, identifier, lock=True)
     require_revision(project, match)
+    linked = select(PaperProject.paper_id).where(
+        PaperProject.owner_id == owner, PaperProject.project_id == identifier
+    )
+    db.execute(
+        update(Paper)
+        .where(Paper.owner_id == owner, Paper.id.in_(linked))
+        .values(revision=Paper.revision + 1, updated_at=datetime.now(UTC))
+    )
     db.delete(project)
     db.commit()
