@@ -42,6 +42,8 @@ def account_client():
         # Explicitly bypass rate limiting here; it has separate Redis-backed tests.
         app.dependency_overrides[login_limit] = lambda: None
         with TestClient(app) as client:
+            # Library CRUD checks opt out; stage 3/runtime tests cover automatic jobs.
+            client.app.state.settings.auto_ingest_uploads = False
             yield client, connection
         outer.rollback()
     engine.dispose()

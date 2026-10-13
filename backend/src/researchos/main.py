@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 from researchos.api.auth import router as auth_router
 from researchos.api.errors import ApiError
 from researchos.api.health import router
+from researchos.api.jobs import router as jobs_router
 from researchos.api.papers import router as papers_router
 from researchos.api.projects import router as projects_router
 from researchos.core.config import Settings
@@ -129,4 +130,5 @@ def create_app(settings: Settings | None = None, probe: HealthProbe | None = Non
     app.include_router(auth_router)
     app.include_router(projects_router)
     app.include_router(papers_router)
+    app.include_router(jobs_router)
     return app

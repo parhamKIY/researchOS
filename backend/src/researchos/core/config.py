@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     session_lifetime_hours: int = Field(default=12, ge=1, le=168)
     storage_root: Path = Path("storage")
     max_upload_bytes: int = Field(default=25 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
+    parse_timeout_seconds: int = Field(default=60, ge=5, le=180)
+    parse_memory_mb: int = Field(default=1024, ge=128, le=2048)
+    parse_max_pages: int = Field(default=200, ge=1, le=500)
+    parse_max_figures: int = Field(default=100, ge=0, le=200)
+    auto_ingest_uploads: bool = True
+    job_lease_seconds: int = Field(default=90, ge=30, le=600)
 
     @model_validator(mode="after")
     def validate_infrastructure(self) -> "Settings":

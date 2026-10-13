@@ -8,11 +8,15 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from researchos.api.errors import ApiError
+from researchos.core.config import Settings
 from researchos.domain.models import (
+    DocumentVersion,
     IdempotencyRecord,
     Paper,
+    PaperFigure,
     PaperFile,
     PaperProject,
+    ProcessingJob,
     StorageCleanup,
     User,
 )
@@ -44,6 +48,25 @@ def paper_read(db: Session, paper: Paper) -> dict:
             )
         )
     )
+    latest = db.scalar(
+        select(DocumentVersion)
+        .where(DocumentVersion.owner_id == paper.owner_id, DocumentVersion.paper_id == paper.id)
+        .order_by(DocumentVersion.created_at.desc(), DocumentVersion.id.desc())
+        .limit(1)
+    )
+    job = (
+        db.scalar(
+            select(ProcessingJob)
+            .where(
+                ProcessingJob.owner_id == paper.owner_id,
+                ProcessingJob.document_version_id == latest.id,
+            )
+            .order_by(ProcessingJob.created_at.desc())
+            .limit(1)
+        )
+        if latest
+        else None
+    )
     return {
         "id": paper.id,
         "title": paper.title,
@@ -55,9 +78,9 @@ def paper_read(db: Session, paper: Paper) -> dict:
         "original_name": file.original_name,
         "byte_size": file.byte_size,
         "sha256": file.sha256,
-        "processing_state": "not_processed",
-        "latest_document_version_id": None,
-        "latest_ingestion_job_id": None,
+        "processing_state": latest.state if latest else "not_processed",
+        "latest_document_version_id": latest.id if latest else None,
+        "latest_ingestion_job_id": job.id if job else None,
     }
 
 
@@ -68,6 +91,7 @@ def accept_upload(
     name: str,
     project_id: uuid.UUID | None,
     key: str,
+    settings: Settings,
 ) -> tuple[int, dict, bool]:
     # Serialize uploads for an account: replay and content deduplication commit together.
     db.scalar(select(User.id).where(User.id == owner).with_for_update())
@@ -104,24 +128,41 @@ def accept_upload(
         paper = Paper(owner_id=owner)
         db.add(paper)
         db.flush()
-        db.add(
-            PaperFile(
-                owner_id=owner,
-                paper_id=paper.id,
-                sha256=upload.sha256,
-                storage_key=upload.key,
-                original_name=name,
-                byte_size=upload.byte_size,
-            )
+        file = PaperFile(
+            owner_id=owner,
+            paper_id=paper.id,
+            sha256=upload.sha256,
+            storage_key=upload.key,
+            original_name=name,
+            byte_size=upload.byte_size,
         )
+        db.add(file)
+        db.flush()
+        if settings.auto_ingest_uploads:
+            from researchos.services.ingestion import enqueue_ingestion
+
+            enqueue_ingestion(db, paper, file, settings, update_revision=False)
     if project_id and db.get(PaperProject, (owner, paper.id, project_id)) is None:
         db.add(PaperProject(owner_id=owner, paper_id=paper.id, project_id=project_id))
         if duplicate:
             paper.revision += 1
             paper.updated_at = now
     db.flush()
+    from researchos.services.ingestion import job_read
+
+    active = db.scalar(
+        select(ProcessingJob).where(
+            ProcessingJob.owner_id == owner,
+            ProcessingJob.paper_id == paper.id,
+            ProcessingJob.state.in_(["queued", "running"]),
+        )
+    )
     body = jsonable_encoder(
-        {"paper": paper_read(db, paper), "duplicate": duplicate, "ingestion_job": None}
+        {
+            "paper": paper_read(db, paper),
+            "duplicate": duplicate,
+            "ingestion_job": job_read(active) if active else None,
+        }
     )
     status = 200 if duplicate else 201
     db.add(
@@ -169,10 +210,28 @@ def delete_paper(db: Session, owner: uuid.UUID, identifier: uuid.UUID, match: st
     db.scalar(select(User.id).where(User.id == owner).with_for_update())
     paper = owned_paper(db, owner, identifier, lock=True)
     require_revision(paper, match)
+    if db.scalar(
+        select(ProcessingJob.id).where(
+            ProcessingJob.owner_id == owner,
+            ProcessingJob.paper_id == identifier,
+            ProcessingJob.state.in_(["queued", "running"]),
+        )
+    ):
+        raise ApiError(
+            409,
+            "processing_active",
+            "Wait for document processing to finish before deleting this paper",
+        )
     file = db.scalar(
         select(PaperFile).where(PaperFile.owner_id == owner, PaperFile.paper_id == identifier)
     )
     db.add(StorageCleanup(owner_id=owner, storage_key=file.storage_key))
+    for key in db.scalars(
+        select(PaperFigure.storage_key).where(
+            PaperFigure.owner_id == owner, PaperFigure.paper_id == identifier
+        )
+    ):
+        db.add(StorageCleanup(owner_id=owner, storage_key=key))
     db.delete(paper)
     db.commit()
 

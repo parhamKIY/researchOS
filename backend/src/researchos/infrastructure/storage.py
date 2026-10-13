@@ -1,6 +1,7 @@
 import hashlib
 import os
 import re
+import shutil
 import uuid
 from collections.abc import AsyncIterable
 from dataclasses import dataclass
@@ -28,12 +29,32 @@ class LocalFileStore:
         self.root = root.resolve()
 
     def path(self, key: str) -> Path:
-        if re.fullmatch(r"[a-f0-9]{32}\.pdf", key) is None:
+        if re.fullmatch(r"[a-f0-9]{32}\.(pdf|png)", key) is None:
             raise ValueError("Invalid private storage key")
         return self.root / key
 
     def delete(self, key: str):
         self.path(key).unlink(missing_ok=True)
+
+    def persist_image(self, source: Path) -> str:
+        if source.stat().st_size > 10 * 1024 * 1024:
+            raise ValueError("Extracted image is too large")
+        with source.open("rb") as handle:
+            if handle.read(8) != b"\x89PNG\r\n\x1a\n":
+                raise ValueError("Extracted image must be PNG")
+        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        key = f"{uuid.uuid4().hex}.png"
+        destination = self.path(key)
+        try:
+            descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "wb") as target, source.open("rb") as handle:
+                shutil.copyfileobj(handle, target)
+                target.flush()
+                os.fsync(target.fileno())
+            return key
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
 
     async def accept(self, chunks: AsyncIterable[bytes], limit: int) -> StoredUpload:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)

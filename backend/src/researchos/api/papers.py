@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from researchos.api.dependencies import Authenticated, Database, Mutation
 from researchos.api.errors import ApiError
+from researchos.api.jobs import JobRead
 from researchos.domain.models import Paper, PaperFile, PaperProject
 from researchos.infrastructure.storage import LocalFileStore
 from researchos.services.papers import (
@@ -36,7 +37,9 @@ class PaperRead(BaseModel):
     original_name: str
     byte_size: int
     sha256: str
-    processing_state: Literal["not_processed"]
+    processing_state: Literal[
+        "not_processed", "queued", "processing", "ready", "partially_ready", "failed"
+    ]
     latest_document_version_id: uuid.UUID | None
     latest_ingestion_job_id: uuid.UUID | None
     revision: int
@@ -69,7 +72,7 @@ class PaperPatch(BaseModel):
 class UploadRead(BaseModel):
     paper: PaperRead
     duplicate: bool
-    ingestion_job: None
+    ingestion_job: JobRead | None
 
 
 class PaperList(BaseModel):
@@ -119,7 +122,14 @@ async def upload(
     retained = False
     try:
         status, body, retained = await run_in_threadpool(
-            accept_upload, db, identity.user.id, accepted, name, project_id, idempotency_key
+            accept_upload,
+            db,
+            identity.user.id,
+            accepted,
+            name,
+            project_id,
+            idempotency_key,
+            request.app.state.settings,
         )
         return JSONResponse(
             status_code=status,

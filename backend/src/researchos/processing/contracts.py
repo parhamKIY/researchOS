@@ -55,7 +55,7 @@ class ParsedDocument(BaseModel):
     metadata: dict
     pages: list[ExtractedPage] = Field(max_length=500)
     figures: list[ExtractedFigure] = Field(max_length=200)
-    sections: list[ExtractedSection]
+    sections: list[ExtractedSection] = Field(max_length=2000)
     warnings: list[str]
     state: Literal["ready", "partially_ready"]
 

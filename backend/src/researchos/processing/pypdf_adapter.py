@@ -1,4 +1,3 @@
-import importlib.metadata
 import re
 import unicodedata
 import warnings as python_warnings
@@ -15,15 +14,8 @@ from researchos.processing.contracts import (
     ParseFailure,
     ParseLimits,
 )
+from researchos.processing.identity import PARSER_NAME, parser_version
 from researchos.processing.structure import doi_candidates, sections_from_pages
-
-PARSER_NAME = "pypdf_raster_v1"
-
-
-def parser_version() -> str:
-    return ";".join(
-        f"{name}={importlib.metadata.version(name)}" for name in ["pypdf", "pdfplumber", "pillow"]
-    )
 
 
 class PypdfParser:
