@@ -1,0 +1,97 @@
+import logging
+import uuid
+from contextlib import asynccontextmanager
+from http import HTTPStatus
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from redis import Redis
+from starlette.exceptions import HTTPException
+
+from researchos.api.health import router
+from researchos.core.config import Settings
+from researchos.infrastructure.database import build_engine
+from researchos.services.health import HealthProbe, InfrastructureHealth
+
+logger = logging.getLogger(__name__)
+
+
+def error_response(request: Request, status: int, code: str, message: str) -> JSONResponse:
+    request_id = getattr(request.state, "request_id", uuid.uuid4().hex)
+    return JSONResponse(
+        status_code=status,
+        content={
+            "error": {"code": code, "message": message, "request_id": request_id, "details": {}}
+        },
+        headers={"X-Request-ID": request_id, "Cache-Control": "private, no-store"},
+    )
+
+
+def create_app(settings: Settings | None = None, probe: HealthProbe | None = None) -> FastAPI:
+    config = settings or Settings()
+    logging.basicConfig(level=config.log_level, format="%(levelname)s %(name)s %(message)s")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        engine = None
+        broker = None
+        if probe is None:
+            engine = build_engine(config)
+            broker = Redis.from_url(
+                config.redis_url.get_secret_value(),
+                socket_connect_timeout=config.health_timeout_seconds,
+                socket_timeout=config.health_timeout_seconds,
+            )
+            app.state.health = InfrastructureHealth(engine, broker)
+        else:
+            app.state.health = probe
+        try:
+            yield
+        finally:
+            if broker is not None:
+                broker.close()
+            if engine is not None:
+                engine.dispose()
+
+    app = FastAPI(
+        title="ResearchOS API",
+        version="0.1.0",
+        lifespan=lifespan,
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+        redoc_url=None,
+    )
+
+    @app.middleware("http")
+    async def request_metadata(request: Request, call_next):
+        request.state.request_id = uuid.uuid4().hex
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            # Catch before ServerErrorMiddleware re-raises and Uvicorn logs raw exception data.
+            logger.error(
+                "unhandled_request_error request_id=%s type=%s",
+                request.state.request_id,
+                type(exc).__name__,
+            )
+            response = error_response(
+                request, 500, "internal_error", "An unexpected error occurred"
+            )
+        response.headers["X-Request-ID"] = request.state.request_id
+        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    @app.exception_handler(HTTPException)
+    async def http_error(request: Request, exc: HTTPException):
+        return error_response(
+            request, exc.status_code, f"http_{exc.status_code}", HTTPStatus(exc.status_code).phrase
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError):
+        return error_response(request, 422, "validation_error", "Request validation failed")
+
+    app.include_router(router)
+    return app
