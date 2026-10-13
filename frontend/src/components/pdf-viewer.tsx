@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy, PDFDocumentLoadingTask, RenderTask } from "pdfjs-dist";
 
-export function PdfViewer({ paperId }: { paperId: string }) {
+export function PdfViewer({ paperId, requestedPage }: { paperId: string; requestedPage?: { number: number; request: number } }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
-  const [page, setPage] = useState(1);
+  const [navigation, setNavigation] = useState({ number: 1, request: 0 });
+  const page = requestedPage && requestedPage.request > navigation.request ? Math.max(1, Math.min(requestedPage.number, document?.numPages ?? requestedPage.number)) : navigation.number;
+  function setPage(number: number) { setNavigation({ number, request: requestedPage?.request ?? 0 }); }
   const [zoom, setZoom] = useState(1);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
@@ -55,9 +57,9 @@ export function PdfViewer({ paperId }: { paperId: string }) {
 
   return <div className="pdf-preview">
     <div className="toolbar">
-      <button className="refresh-button" disabled={!document || page <= 1} onClick={() => setPage((n) => n - 1)}>Previous page</button>
+      <button className="refresh-button" disabled={!document || page <= 1} onClick={() => setPage(page - 1)}>Previous page</button>
       <span className="muted">{document ? `Page ${page} of ${document.numPages}` : "Opening PDF…"}</span>
-      <button className="refresh-button" disabled={!document || page >= document.numPages} onClick={() => setPage((n) => n + 1)}>Next page</button>
+      <button className="refresh-button" disabled={!document || page >= document.numPages} onClick={() => setPage(page + 1)}>Next page</button>
       <label>Zoom<select aria-label="PDF zoom" value={zoom} onChange={(event) => setZoom(Number(event.target.value))}><option value={0.75}>75%</option><option value={1}>100%</option><option value={1.5}>150%</option></select></label>
     </div>
     {error ? <p role="alert" className="error-message">{error}</p> : <>
