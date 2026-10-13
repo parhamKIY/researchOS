@@ -1,6 +1,6 @@
 # Architecture decisions — initial release
 
-Status: approved implementation plan; no runtime components exist yet.
+Status: approved implementation plan; foundation components are implemented. See [development instructions](DEVELOPMENT.md) for current scope and execution checks.
 Related contracts: [data model](DATA_MODEL.md), [API](API_CONTRACT.md), [roadmap](ROADMAP.md).
 
 ## Release boundary
@@ -134,4 +134,6 @@ All paths above use the `/api/v1` prefix. The complete route and payload definit
 
 Architecture, data ownership/versioning, API payloads, and the end-to-end acceptance trace are designed. This is design completion, not implementation or runtime verification.
 
-Next: build the runnable frontend/backend foundation, validated configuration, PostgreSQL migration, broker/worker connectivity, Compose, and CI. Keep interim run instructions in `docs/DEVELOPMENT.md`; defer README updates until the application is complete.
+The runnable frontend/backend foundation, validated configuration, PostgreSQL identity migration, broker/worker connectivity, Compose, and CI configuration now exist. Local execution checks are recorded in `docs/DEVELOPMENT.md`; remote CI execution is not yet verified.
+
+Next: account provisioning, session authentication and CSRF controls, owned research projects, and the first persistent paper-library workflow. Defer README updates until the application is complete.

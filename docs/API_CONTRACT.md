@@ -1,6 +1,6 @@
 # Initial REST API contract
 
-Status: design, version 0.1; endpoints are not implemented.
+Status: design, version 0.1; the two health endpoints are implemented. All other resource endpoints remain planned. Generated runtime documentation is available at `/api/docs` through the frontend.
 All resource routes below are relative to `/api/v1`.
 Related: [architecture](ARCHITECTURE.md), [data model](DATA_MODEL.md).
 

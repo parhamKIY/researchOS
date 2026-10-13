@@ -1,6 +1,6 @@
 # Initial relational data model
 
-Status: design only; tables and migrations are not implemented yet.
+Status: `users` and `auth_sessions` are implemented in migration `0001_identity`. All other tables below remain a design for later milestones; authentication behavior is not implemented yet.
 Related: [architecture](ARCHITECTURE.md), [API contract](API_CONTRACT.md).
 
 ## Conventions and integrity
