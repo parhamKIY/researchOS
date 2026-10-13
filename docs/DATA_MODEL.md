@@ -1,9 +1,11 @@
 # Initial relational data model
 
-Status: migrations `0001_identity`, `0002_projects`, and `0003_library` implement users, sessions, owned projects, the initial paper/file library, owner-constrained memberships, upload replay and pending file cleanup. All extraction, job, provider and analysis tables below remain planned.
+Status: migrations through `0004_ingestion` implement identity, owned projects/papers/files, replay/cleanup, extraction versions/pages/sections/spans/raster figures and durable ingestion jobs. Provider and analysis tables remain planned.
 Related: [architecture](ARCHITECTURE.md), [API contract](API_CONTRACT.md).
 
-Stage 2 implements a subset of the paper metadata: nullable user title, privacy policy, revision and timestamps. Parser-derived metadata and document-version pointers remain pending. A paper has one immutable original file. Cleanup rows represent pending work implicitly and are removed after successful deletion; `attempt`, `error_code` and `created_at` support retry. The maintenance process expires upload replay records and reconciles old unreferenced files every minute. The broader table descriptions below include planned fields; they are not a claim that every column exists today.
+User paper metadata remains a bounded subset: nullable title, privacy policy, revision and timestamps. Parsed PDF-info metadata and DOI candidates are stored separately on each document version, without overwriting the title. Latest version/job IDs are derived in reads. A paper has one immutable original file. Cleanup rows represent pending work implicitly and are removed after successful deletion. The broader table descriptions below include planned fields; they are not a claim that every column exists today.
+
+Implemented ingestion details: composite foreign keys constrain source files to the same owner/paper and pages, section spans and figures to the same owner/version. Version states are `queued`, `processing`, `ready`, `partially_ready`, `failed`. Page text states are `available`, `no_text`, `failed`. Sections store heuristic heading labels with spans into immutable page text; figures store raster PNG keys, nullable caption offsets/association method and top-origin PDF-point bounding boxes. Unknown metadata stays nullable/unverified. Jobs hold a frozen file hash/parser/configuration snapshot, guarded lease, dispatch deadline and safe error code. A partial unique index prevents equivalent active work. Manual retry creates a new version and job lineage; lease recovery reuses the unfinished version. Active jobs block paper deletion. Deletion queues all original/image keys before cascading database records.
 
 ## Conventions and integrity
 

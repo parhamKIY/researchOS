@@ -1,6 +1,6 @@
 # Initial REST API contract
 
-Status: version 0.2. Health, authentication, projects, and the stage 2 paper-library subset are implemented. Parsing, jobs, analysis, and provider endpoints remain planned. Generated runtime documentation is available at `/api/docs` through the frontend.
+Status: version 0.3. Health, authentication, projects, paper library and owned extraction/job endpoints are implemented. Analysis and provider endpoints remain planned. Generated typed runtime documentation is available at `/api/docs` through the frontend. Planned payload fields below are not all implemented.
 All resource routes below are relative to `/api/v1`.
 Related: [architecture](ARCHITECTURE.md), [data model](DATA_MODEL.md).
 
@@ -9,26 +9,26 @@ Related: [architecture](ARCHITECTURE.md), [data model](DATA_MODEL.md).
 - Accounts are provisioned with `python -m researchos.cli create-user --email ...`; there is no signup endpoint. Passwords use salted scrypt (N=131072, r=8, p=1). Login has a shared Redis rate limit of 30 attempts/minute; password verification concurrency is bounded. Infrastructure failure closes login with 503.
 - All authentication and project routes below are available. Project deletion preserves papers and increments affected paper revisions when memberships disappear.
 - Paper upload uses a **raw `application/pdf` request body**, `filename` and optional `project_id` query parameters, and `Idempotency-Key` plus the session CSRF header. This replaces the earlier multipart proposal and avoids a separate multipart parser. Maximum default size is 25 MiB; uploads time out after 90 seconds. The web proxy allows up to 110 MiB to accommodate the backend's configurable maximum of 100 MiB; the backend enforces the actual configured limit.
-- Upload acceptance checks filename, size, PDF header/end marker and owner access. This is not structural parsing, malware scanning, or a guarantee that a PDF can be rendered. Extraction/parser validation remains stage 3. No ingestion job is created; `ingestion_job` and latest version/job IDs are null, and `processing_state` is `not_processed`.
+- Upload acceptance checks filename, size, PDF header/end marker and owner access. This is not structural parsing, malware scanning, or a guarantee that a PDF can be rendered. New uploads automatically queue ingestion by default, atomically with storage metadata. Reused files do not start another job. `RESEARCHOS_AUTO_INGEST_UPLOADS=false` permits storage-only uploads, with manual ingestion still available.
 - Uploads serialize per owner. Same-key/same-content replay returns the original status/body for 24 hours; a different payload returns 409. The payload fingerprint includes content hash, sanitized filename and project. Same-owner content duplicates reuse the original paper; another account gets its own record and private file.
 - Paper listing currently supports `q` (literal title/filename substring), `project_id`, `limit`, and signed `cursor`. Tag and processing-state filters remain planned. Cursor scope includes owner, list kind and filters; malformed or mismatched cursors return 422.
-- Implemented paper reads contain `id`, nullable user-supplied `title`, `external_processing_allowed`, `project_ids`, `original_name`, `byte_size`, `sha256`, processing/version/job placeholders, revision and timestamps. Storage keys and owner IDs are not serialized. Author, DOI and other parsed metadata fields remain planned.
+- Implemented paper reads contain `id`, nullable user-supplied `title`, `external_processing_allowed`, `project_ids`, `original_name`, `byte_size`, `sha256`, current `processing_state`, nullable latest version/job IDs, revision and timestamps. Storage keys and owner IDs are not serialized. Parsed metadata lives on the document version rather than the paper.
 - Implemented paper PATCH supports `title` (nullable to clear), `project_ids` (full replacement), and `external_processing_allowed`. Unknown fields, null membership/privacy fields and duplicate project IDs are rejected. Every project must belong to the account.
 - File GET supports private byte ranges and optional `download=true`. PDF.js displays pages locally using bundled worker/fonts/maps; the app does not run document scripts or render interactive annotations. Files also carry a restrictive CSP.
 - Deletion commits a cleanup record before removing paper rows; failed file removal retries through maintenance every minute. Old unreferenced generated files and temporary uploads are reconciled after 24 hours. Account deletion remains unexposed.
 - Mutable project/paper reads return ETag; PATCH/DELETE require `If-Match` (428 missing, 412 stale). Foreign-owned IDs return the same 404 as absent IDs. JSON mutations are bounded to 16 KiB.
 
-The remaining definitions below preserve the intended later contracts. Where they describe additional paper fields, multipart upload, job creation or filters, the implemented boundary above takes precedence until those stages are delivered.
+The broader definitions below preserve intended later contracts. The implemented stage 2 boundary above and stage 3 boundary below take precedence for current routes. Additional paper, analysis and provider fields remain planned.
 
 ## Shared behavior
 
 - JSON uses snake_case; IDs are UUIDs; timestamps are UTC RFC 3339. Unknown fields in mutation payloads are rejected.
 - Authentication uses an opaque HttpOnly cookie. Non-login mutations require `X-CSRF-Token`; login requires a trusted Origin and JSON. Provisioning is CLI-only.
 - Missing resources and resources owned by another user both return 404. Invalid authentication returns 401; policy/capability restrictions for an owned resource return 403 or 422 as specified.
-- Paginated responses use `{items, next_cursor}`. `limit` defaults to 20, maximum 100. Opaque cursors validate scope, filters, sort, and tie-breaking ID; malformed cursors return 422.
+- Cursor-paginated responses use `{items, next_cursor}`. `limit` defaults to 20, maximum 100. Opaque cursors validate scope, filters, sort, and tie-breaking ID; malformed cursors return 422. The bounded figure collection uses offsets as specified in the stage 3 boundary.
 - List order defaults to descending creation time, then descending ID. Paper lists support bounded `q`, `project_id`, `tag`, and `processing_state`; project lists support `archived`.
 - Mutable metadata/configuration reads return an ETag derived from revision. PATCH/PUT/DELETE require `If-Match` for existing mutable projects, papers, providers, models, and routing settings: absent returns 428, stale returns 412. Job/report/file reads are not mutable configuration.
-- `Idempotency-Key` is required for upload, analysis creation, and retry creation. Scope is owner + operation; retain for at least 24 hours. Same key and canonical payload/hash replays its original status/body; different payload returns 409. Uploads serialize concurrent requests; in-progress job-creation rejection with a retry hint is planned for later stages.
+- `Idempotency-Key` is required for upload, ingestion, planned analysis creation, and retry creation. Scope is owner + operation; retain for at least 24 hours. Same key and canonical payload/hash replays its original status/body; different payload returns 409. Uploads and ingestion creation serialize per owner; equivalent active ingestion returns 409.
 - Rate limiting returns 429 and `Retry-After`; known temporary infrastructure unavailability returns 503. Provider failures are normalized in the job, not returned as raw SDK exceptions.
 - UUID path/query validation and request-schema errors return 422; size overflow 413; unsupported media 415; malformed/nonparseable PDF 422 if caught synchronously or a failed ingestion job otherwise.
 - Errors use `{error: {code, message, request_id, details}}`. Details contain safe field issues/owned conflicting IDs, never credentials, document text, raw provider errors, or stack traces.
@@ -99,7 +99,7 @@ Fields are required unless marked `?`. Nullable is stated explicitly. Read objec
 | `PaperPatch` | Optional typed `title`, `authors: string[]`, `publication_year: integer`, `venue`, `doi`, `abstract`; nullable metadata may be cleared; `tags?: string[]`, `project_ids?: UUID[]` (full replacement), `external_processing_allowed?: bool`; at least one field required |
 | `PaperRead` | `id`, nullable `title`, `doi`, `abstract`, `publication_year`, `venue`; `authors: string[]`, metadata provenance, `tags`, `project_ids`, `external_processing_allowed`, nullable `latest_document_version_id`, nullable `latest_ingestion_job_id`, `revision`, timestamps |
 | `UploadRead` | `paper: PaperRead`, `duplicate: bool`, nullable `ingestion_job: JobRead`; null when no active ingestion exists on reused paper |
-| `DocumentVersionRead` | `id`, `paper_id`, `state`, nullable parser name/version, `warnings`, `created_at`, nullable `completed_at` |
+| `DocumentVersionRead` | `id`, `paper_id`, `state`, parser name/version/config, unverified `metadata`, `warnings`, `page_count`, `figure_count`, `created_at`, nullable `completed_at` |
 | `FigureRead` | `id`, `paper_id`, `document_version_id`, `page_number`, nullable caption and bounding box, `file_url` (owned relative API route), `extraction_method` |
 | `AnalysisCreate` | `document_version_id: UUID`, `model_configuration_id?: UUID`, `language` (enum: `en`, `fa`), `parameters?: object` validated against provider/model, `consent_provider_ids: UUID[]` matching the resolved provider/fallbacks |
 | `RetryRequest` | `acknowledge_possible_duplicate_cost?: bool` (default false); unchanged snapshot must still be valid or submit a new analysis instead |
@@ -137,7 +137,23 @@ Each section payload receives a Pydantic schema during implementation and is ver
 
 ## Asynchronous and re-analysis semantics
 
-Stage 2 upload returns after private storage and durable database commit without starting parsing. Stage 3 will add asynchronous parsing. The planned analysis endpoint requires a usable `ready` or `partially_ready` document version and freezes its configuration. A new idempotency key permits intentional re-analysis after previous work has terminated; equivalent active work returns 409.
+Upload returns after private storage and durable database/job commit. Parsing runs asynchronously. The planned analysis endpoint requires a usable `ready` or `partially_ready` document version and freezes its configuration. A new idempotency key permits intentional re-extraction/re-analysis after previous work has terminated; equivalent active work returns 409.
+
+### Implemented stage 3 API
+
+| Route | Current behavior |
+|---|---|
+| `POST /papers/{paper_id}/ingestions` | Empty JSON `{}`, CSRF and idempotency key; 202 job with Location. At most 60 new ingestion jobs per owner/hour; active equivalent work returns 409. |
+| `GET /jobs/{job_id}` | Ingestion state, real progress, attempt, version/retry IDs and nullable `error: {code}`. No snapshot, lease or file key. |
+| `POST /jobs/{job_id}/retry` | Empty JSON `{}`, CSRF and idempotency key; failed ingestion only. New version/job, 24-hour request replay. Paid analysis retry is still planned. |
+| `GET /papers/{paper_id}/document-versions` | Signed cursor and limit 1–100 (default 20), newest first; state, parser identity/config, unverified metadata, warnings, page/figure counts, created/completed times. |
+| `GET /document-versions/{version_id}` | Same version metadata, including historical versions. |
+| `GET /document-versions/{version_id}/pages/{page_number}` | One-based page, immutable text/status/warnings and PDF dimensions. Absent page returns 404. |
+| `GET /document-versions/{version_id}/sections` | Ordered heuristic sections with page IDs/numbers and Unicode code-point spans. Zero-based inclusive start, exclusive end. |
+| `GET /papers/{paper_id}/figures?document_version_id=...` | Required owned version from this paper; `offset` 0–200, `limit` 1–100 (default 50); items and nullable `next_offset`. Page/version references, caption candidate/offsets, nullable bounding box/method and private file URL. |
+| `GET /figures/{figure_id}/file` | Owned PNG with private/no-store and nosniff headers. |
+
+Every extraction route uses owner-scoped reads; foreign IDs are indistinguishable from absent IDs (404). The original remains downloadable on failure. A terminal partial result reaches 100% without claiming that OCR or missing structures succeeded. Parser configuration is fixed per job; changed runtime policy requires a new extraction rather than altering history. Heading/caption association correctness is not guaranteed by valid offsets.
 
 For analysis, the fingerprint includes owner, paper/version, task, model/provider revisions, language, generation parameters, prompt/schema versions, and allowed fallback configuration. Ingestion uses owner, file hash, parser identity/version, and parser configuration. Idempotency replay returns the originally accepted response, while `GET /jobs/{job_id}` returns current progress.
 

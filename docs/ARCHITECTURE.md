@@ -1,6 +1,6 @@
 # Architecture decisions — initial release
 
-Status: foundation and private project/paper library are implemented. Parsing, durable ingestion dispatch and AI features remain planned. See [development instructions](DEVELOPMENT.md) for current scope and execution checks.
+Status: foundation, private project/paper library and versioned local document extraction are implemented. AI/provider features remain planned. See [development instructions](DEVELOPMENT.md) for current scope and execution checks.
 Related contracts: [data model](DATA_MODEL.md), [API](API_CONTRACT.md), [roadmap](ROADMAP.md).
 
 ## Release boundary
@@ -28,7 +28,7 @@ flowchart LR
     Gateway --> Provider[Configured external provider]
 ```
 
-API, maintenance, and worker use one backend package and database, deployed as separate processes in Docker Compose. Maintenance retries private file cleanup and reconciles abandoned uploads; the durable job dispatcher is planned for stage 3. Only the web entry point is exposed by default. Provider secrets and private files remain server-side. Redis is a broker, not the source of job/report truth.
+API, maintenance, and worker use one backend package and database, deployed as separate processes in Docker Compose. Maintenance dispatches durable queued jobs and recovers expired worker leases every five seconds; private file cleanup runs once per minute. Only the web entry point is exposed by default. Private files remain server-side. Redis is a broker, not the source of job/report truth.
 
 The stage 2 frontend renders PDF pages with bundled PDF.js assets (Apache-2.0), without document scripting or interactive annotations. This browser display library is separate from selecting a backend extraction parser. Uploads use a bounded raw PDF body rather than multipart; see the implemented [API boundary](API_CONTRACT.md).
 
@@ -138,4 +138,12 @@ Architecture, data ownership/versioning, API payloads, and the end-to-end accept
 
 The runnable frontend/backend foundation, validated configuration, PostgreSQL identity migration, broker/worker connectivity, Compose, and CI configuration now exist. Local execution checks are recorded in `docs/DEVELOPMENT.md`; remote CI execution is not yet verified.
 
-Local provisioning, session authentication/CSRF, owned projects, persistent raw PDF upload/replay, private library search, file delivery and PDF.js preview now work. A maintenance process handles file cleanup. Next: evaluate backend extraction parsers and implement page-preserving asynchronous ingestion. Defer README updates until the application is complete.
+Local provisioning, session authentication/CSRF, owned projects, persistent raw PDF upload/replay, private file delivery, PDF.js preview and asynchronous extraction now work. Next: secure provider/model settings. Defer README updates until the application is complete.
+
+## Implemented extraction boundary
+
+The replaceable parser contract is implemented with locked pypdf, pdfplumber and Pillow. Selection evidence and licensing are in [the parser evaluation](PARSER_EVALUATION.md). The full Docling ML/OCR pipeline is not installed or benchmarked. Page text, heuristic heading spans, PDF-info metadata/DOI candidates and embedded raster images retain page/version provenance. Captions are explicitly candidates, and metadata is unverified. OCR, vector drawings and structured tables are unavailable.
+
+Each new upload creates its job and document version in the same database transaction. Explicit re-extraction and failed-job retry are CSRF-protected and replayable; a retry creates a fresh version. A worker claims a lease, verifies the original file hash and frozen parser identity, then runs extraction in a subprocess with a scrubbed environment, wall timeout and Linux address-space/CPU/output-file limits. This is process/resource isolation, not an OS security sandbox; Windows host execution has no Unix resource limits. No provider is called.
+
+Page publication is one database transaction with version/owner/offset checks and compensating image cleanup. A guarded heartbeat and lease token fence stale workers; duplicate messages cannot publish twice. An expired job is requeued up to three claimed attempts before failure. Original and extracted files remain private. The UI polls actual job state, keeps old versions selectable and connects text/section/image references to the original PDF page. Offsets count Unicode code points, with zero-based inclusive start and exclusive end.

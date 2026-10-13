@@ -1,8 +1,8 @@
 # Local development
 
-Implemented scope: health/API docs; account provisioning, opaque session authentication and CSRF; owned project management; persistent private PDF library with replay/deduplication, title edits, search/project filtering, byte-range downloads and PDF.js page preview; retryable file cleanup; PostgreSQL migrations; Redis/Celery foundation task; Compose; locked dependencies; CI checks.
+Implemented scope: health/typed API docs; account provisioning, opaque session authentication and CSRF; owned projects/private PDFs; PDF.js preview; versioned page text, heuristic section spans, unverified metadata and raster images; durable Celery ingestion/progress/retry and expired-lease recovery; private cleanup; migrations; Compose; locked dependencies; CI checks.
 
-Document extraction, AI analysis, durable document-job dispatch and provider settings remain pending. Stored documents are visibly marked not processed; upload creates no ingestion job. No paid API key is required for stage 2.
+Provider settings and AI analysis remain pending. Upload queues local extraction by default and needs no paid API key. Extraction limitations and verification are recorded in [stage 3](MILESTONE_03.md) and [parser evaluation](PARSER_EVALUATION.md).
 
 ## Run locally
 
@@ -30,7 +30,11 @@ Only the frontend is published, on loopback. PostgreSQL, Redis, API and maintena
 
 Private originals live in the `private-files` named volume shared by API, worker and maintenance. PostgreSQL and originals survive container recreation. Backup/restore procedures are still pending; persistence is not a backup. The API runs as UID 10001 and creates original files with mode 0600.
 
-Uploads default to 25 MiB and time out after 90 seconds; `RESEARCHOS_MAX_UPLOAD_BYTES` can change the size up to 100 MiB. Raw uploads carry `Content-Type: application/pdf`, the session CSRF header and an idempotency key. Header/end-marker acceptance does not prove structural validity. Password-protected and malformed PDFs may be stored but fail preview; comprehensive parsing remains stage 3. PDF.js renders pages without document scripts or interactive annotations; worker, fonts and maps are served locally rather than through a CDN.
+Uploads default to 25 MiB and time out after 90 seconds; `RESEARCHOS_MAX_UPLOAD_BYTES` can change the size up to 100 MiB. Raw uploads carry `Content-Type: application/pdf`, the session CSRF header and an idempotency key. Header/end-marker acceptance does not prove structural validity. Password-protected and malformed PDFs may be stored but fail extraction with a safe error. PDF.js renders pages without document scripts or interactive annotations; worker, fonts and maps are served locally rather than through a CDN.
+
+New uploads create durable ingestion jobs; open the paper to see progress, select extraction history, inspect page text/sections and jump from an image to its source page. Failed jobs expose Retry; completed jobs expose Extract new version. Original files and historical successful results remain available. Deletion is blocked while work is active. Set `RESEARCHOS_AUTO_INGEST_UPLOADS=false` only when storage-only uploads are wanted.
+
+Default parser limits are 200 pages, 100 raster images, 2 million text code points, 16 million pixels/image, 10 MiB/image and 100 MiB total image output. Subprocess wall time defaults to 60 seconds, Linux address-space limit to 1024 MiB and lease to 90 seconds; configurable values are shown in `.env.example`. These are bounds, not a promise that every PDF within them succeeds. Extraction runs in a separate process with scrubbed application credentials; Unix resource limits apply in the Linux container, not on a Windows host. It is not an OS security sandbox. Source PDFs are untrusted; OCR, vector-figure extraction and structured tables are not implemented.
 
 Maintenance retries pending deletions every minute, expires old upload replay records, and removes unreferenced generated files/temporary uploads older than 24 hours. To run one sweep manually:
 
@@ -66,7 +70,7 @@ Run PostgreSQL/Redis/worker integration checks after the stack is ready, from th
 docker compose --profile test run --build --rm tests
 ```
 
-This uses a separate test image and checks migrated PostgreSQL constraints, ORM/migration agreement, authentication/CSRF and ownership, upload replay/deduplication/deletion, private ranges, a real Celery round trip, and an 11 MiB concurrent upload through the running frontend proxy. Most database fixtures roll back. The runtime-proxy test provisions a uniquely named disposable account, commits its test records for HTTP visibility, and removes only its own records/files in `finally`. No provider credentials are used. Integration tests are opt-in outside this container and are never silently replaced by SQLite or a fake Redis server.
+This uses a separate test image and checks migrated PostgreSQL constraints, ORM/migration agreement, authentication/CSRF/ownership, real parser subprocesses, atomic publication rollback, lease fencing/recovery, explicit broker-outage mocks, private ranges and an 11 MiB concurrent upload through the frontend. A real HTTP/Celery ingestion check verifies pages/images/version history, duplicate delivery and failed-job retry. Most database fixtures roll back. Runtime tests provision uniquely named disposable accounts and remove only their own records/files in `finally`. No provider credentials are used. Integration tests are opt-in and never silently replaced by SQLite or fake Redis.
 
 ## Frontend checks
 
@@ -152,6 +156,8 @@ Implemented and checked locally: login/logout/session invalidation, project life
 Execution totals and current limitations are recorded in [the stage 2 checkpoint](MILESTONE_02.md). Remote GitHub Actions execution and real AI providers are not included in local verification.
 
 ## Network diagnostics
+
+Stage 3 acceptance, current limits and local execution totals are recorded in [the extraction checkpoint](MILESTONE_03.md). The selected parser has also been executed through its real Linux child-process runner on three public research PDFs; see [the evaluation record](PARSER_EVALUATION.md).
 
 If an image pull fails, distinguish host registry access, Docker engine image access, and package access inside a container/build. A registry timeout is not evidence of an application failure. Do not expose `.env` through `docker compose config` output; use `--quiet`.
 
