@@ -47,6 +47,7 @@ class PypdfParser:
             "tables_not_structured",
         ]
         consumed = 0
+        image_bytes = 0
         with pdfplumber.open(path) as layout:
             for index, source in enumerate(reader.pages):
                 page_warnings = []
@@ -101,10 +102,12 @@ class PypdfParser:
                         ordinal = len(figures)
                         filename = f"figure-{ordinal}.png"
                         image.save(output / filename, format="PNG")
-                        if (output / filename).stat().st_size > 10 * 1024 * 1024:
+                        size = (output / filename).stat().st_size
+                        if size > 10 * 1024 * 1024 or image_bytes + size > 100 * 1024 * 1024:
                             (output / filename).unlink()
                             page_warnings.append("image_size_limit_exceeded")
                             continue
+                        image_bytes += size
                         caption = captions[0] if len(keys) == len(captions) == 1 else None
                         reference = extracted.indirect_reference
                         figures.append(
