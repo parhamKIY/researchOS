@@ -12,7 +12,7 @@ from test_papers import upload
 
 from researchos.domain.models import DocumentPage, DocumentVersion, PaperFigure, ProcessingJob
 from researchos.infrastructure.storage import LocalFileStore
-from researchos.processing.contracts import ParseLimits
+from researchos.processing.contracts import ParseFailure, ParseLimits
 from researchos.processing.pypdf_adapter import PypdfParser
 from researchos.services.dispatch import dispatch_ready_jobs, recover_expired_jobs
 from researchos.services.ingestion import claim_job, fail_job, heartbeat_job
@@ -137,6 +137,46 @@ def test_expired_lease_recovery_fences_old_worker(queued):
         assert not fail_job(db, old, "fixture_old_worker")
         assert heartbeat_job(db, new, settings, 50)
         assert fail_job(db, new, "invalid_pdf")
+
+
+def test_invalid_caption_rolls_back_pages_and_copied_images(queued, tmp_path):
+    client, connection, _, storage, source, body = queued
+    with database(connection) as db:
+        lease = claim_job(db, uuid.UUID(body["ingestion_job"]["id"]), client.app.state.settings)
+    parsed = PypdfParser().parse(source, tmp_path / "parsed", ParseLimits(), lambda *_: None)
+    parsed.figures[1].caption = "Deliberately incorrect test caption"
+    with database(connection) as db:
+        with pytest.raises(ParseFailure) as failure:
+            publish_document(db, lease, parsed, tmp_path / "parsed", LocalFileStore(storage))
+        assert failure.value.code == "invalid_parser_result"
+        assert not list(
+            db.scalars(
+                select(DocumentPage).where(DocumentPage.document_version_id == lease.version_id)
+            )
+        )
+        assert not list(
+            db.scalars(
+                select(PaperFigure).where(PaperFigure.document_version_id == lease.version_id)
+            )
+        )
+    assert not list(storage.glob("*.png"))
+
+
+def test_expired_worker_cannot_publish_any_extraction(queued, tmp_path):
+    client, connection, _, storage, source, body = queued
+    with database(connection) as db:
+        lease = claim_job(db, uuid.UUID(body["ingestion_job"]["id"]), client.app.state.settings)
+        db.get(ProcessingJob, lease.id).lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        db.commit()
+    parsed = PypdfParser().parse(source, tmp_path / "parsed", ParseLimits(), lambda *_: None)
+    with database(connection) as db:
+        assert not publish_document(db, lease, parsed, tmp_path / "parsed", LocalFileStore(storage))
+        assert not list(
+            db.scalars(
+                select(DocumentPage).where(DocumentPage.document_version_id == lease.version_id)
+            )
+        )
+    assert not list(storage.glob("*.png"))
 
 
 def test_retry_creates_new_version_and_replays_request(queued):

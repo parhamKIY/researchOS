@@ -83,8 +83,8 @@ def publish_document(
                 )
         for source in parsed.figures:
             page = pages.get(source.page_number)
-            image = (work / source.filename).resolve()
-            if page is None or image.parent != work.resolve() or image.is_symlink():
+            image = work / source.filename
+            if page is None or image.resolve().parent != work.resolve() or image.is_symlink():
                 raise ParseFailure("invalid_parser_result")
             if source.caption is not None:
                 if (
