@@ -6,6 +6,8 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
+    Integer,
     MetaData,
     String,
     UniqueConstraint,
@@ -13,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-SCHEMA_REVISION = "0001_identity"
+SCHEMA_REVISION = "0002_projects"
 
 
 class Base(DeclarativeBase):
@@ -63,3 +65,22 @@ class AuthSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Project(Base):
+    __tablename__ = "projects"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "id"),
+        CheckConstraint("length(trim(name)) > 0", name="nonempty_name"),
+        CheckConstraint("revision > 0", name="positive_revision"),
+        Index("ix_projects_owner_created", "owner_id", "created_at", "id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(String(5000), default="", server_default="")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
