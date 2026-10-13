@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -18,6 +19,8 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     health_timeout_seconds: int = Field(default=2, ge=1, le=10)
     session_lifetime_hours: int = Field(default=12, ge=1, le=168)
+    storage_root: Path = Path("storage")
+    max_upload_bytes: int = Field(default=25 * 1024 * 1024, ge=1024, le=100 * 1024 * 1024)
 
     @model_validator(mode="after")
     def validate_infrastructure(self) -> "Settings":
