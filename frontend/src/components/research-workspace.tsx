@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, ApiFailure, type Session } from "@/lib/api";
 import { SystemStatus } from "@/components/system-status";
 import { ProjectLibrary } from "@/components/project-library";
+import { PaperLibrary } from "@/components/paper-library";
 
 export function ResearchWorkspace() {
   const [session, setSession] = useState<Session | null>(null);
@@ -46,6 +47,7 @@ export function ResearchWorkspace() {
     try {
       await api("/auth/logout", { method: "POST" }, session.csrf_token);
       setSession(null);
+      setProject("");
     } catch (err) {
       if (err instanceof ApiFailure && err.status === 401) setSession(null);
       else setError((err as Error).message);
@@ -82,6 +84,7 @@ export function ResearchWorkspace() {
             </section>
           ) : <><p className="intro">Your private workspace is ready.</p>
             <ProjectLibrary key={session.user.id} session={session} expired={expired} selected={project} select={setProject} />
+            <PaperLibrary key={session.user.id} session={session} expired={expired} project={project} />
             <details className="infrastructure-details"><summary>Infrastructure status</summary><SystemStatus /></details></>}
           <footer>ResearchOS <span>Traceable sources. Reproducible analysis.</span></footer>
         </div>
