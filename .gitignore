@@ -1,0 +1,35 @@
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Frontend and build outputs
+node_modules/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Runtime documents, private uploads, and logs
+data/
+storage/
+*.log
+
+# Local operating-system files
+.DS_Store
+Thumbs.db
