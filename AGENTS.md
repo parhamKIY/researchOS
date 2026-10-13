@@ -6,7 +6,8 @@
 - The user's current instructions take precedence over project documents.
 - Implement one coherent milestone at a time, with a usable vertical slice before expanding scope.
 - Keep planned, implemented, tested, and real-provider-verified capabilities distinct.
-- Update the roadmap and README when their documented status changes.
+- Update the roadmap when its documented status changes.
+- Defer README writing and updates until the application is complete, as explicitly requested by the user. Keep interim technical and run instructions in `docs/`.
 
 ## Architecture
 
