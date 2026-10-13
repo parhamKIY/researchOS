@@ -12,6 +12,8 @@ dependencies = [
   "psycopg[binary]>=3.2,<4",
   "redis>=5,<8",
   "celery[redis]>=5.4,<6",
+  "pypdf[image]>=6.20.1,<7",
+  "pdfplumber>=0.11,<1",
 ]
 
 [dependency-groups]
