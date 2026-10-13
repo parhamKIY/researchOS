@@ -27,6 +27,8 @@ class ProjectCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def meaningful_name(cls, value):
+        if value is None:
+            return value
         if not value.strip():
             raise ValueError("Project name cannot be blank")
         return value.strip()

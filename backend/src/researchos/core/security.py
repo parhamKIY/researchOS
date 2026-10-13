@@ -1,8 +1,10 @@
 import hashlib
 import hmac
 import secrets
+from threading import BoundedSemaphore
 
 SCRYPT_N = 2**17
+password_slots = BoundedSemaphore(2)
 
 
 def _derive(password: str, salt: bytes) -> bytes:
@@ -33,10 +35,11 @@ def verify_password(encoded: str | None, password: str) -> bool:
         algorithm, n, r, p, salt, expected = (encoded or dummy_hash).split("$")
         if (algorithm, n, r, p) != ("scrypt", str(SCRYPT_N), "8", "1"):
             return False
-        return (
-            hmac.compare_digest(_derive(password, bytes.fromhex(salt)).hex(), expected)
-            and encoded is not None
-        )
+        with password_slots:
+            return (
+                hmac.compare_digest(_derive(password, bytes.fromhex(salt)).hex(), expected)
+                and encoded is not None
+            )
     except (ValueError, TypeError):
         return False
 

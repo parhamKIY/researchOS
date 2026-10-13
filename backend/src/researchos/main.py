@@ -29,7 +29,11 @@ def error_response(request: Request, status: int, code: str, message: str) -> JS
         content={
             "error": {"code": code, "message": message, "request_id": request_id, "details": {}}
         },
-        headers={"X-Request-ID": request_id, "Cache-Control": "private, no-store"},
+        headers={
+            "X-Request-ID": request_id,
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -78,9 +82,9 @@ def create_app(settings: Settings | None = None, probe: HealthProbe | None = Non
         ):
             body = bytearray()
             async for chunk in request.stream():
-                body.extend(chunk)
-                if len(body) > 16 * 1024:
+                if len(body) + len(chunk) > 16 * 1024:
                     return error_response(request, 413, "request_too_large", "Request is too large")
+                body.extend(chunk)
             request._body = bytes(body)
         try:
             response = await call_next(request)

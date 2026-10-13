@@ -27,6 +27,11 @@ def test_project_lifecycle_revisions_archive_and_delete(account_client):
     path = first.headers["location"]
     tag = first.headers["etag"]
     assert first.json()["name"] == "My project"
+    for invalid in [{}, {"name": None}, {"description": None}, {"archived": None}]:
+        assert (
+            client.patch(path, headers={**headers, "If-Match": tag}, json=invalid).status_code
+            == 422
+        )
     assert "owner_id" not in first.json()
     assert client.get(path).headers["etag"] == tag
     assert client.patch(path, headers=headers, json={"name": "Updated"}).status_code == 428

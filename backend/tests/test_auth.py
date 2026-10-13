@@ -73,6 +73,12 @@ def test_auth_lifecycle_cookie_csrf_and_revocation(account_client):
     assert client.post("/api/v1/auth/logout", headers=ORIGIN).status_code == 403
     assert (
         client.post(
+            "/api/v1/auth/logout", headers={**ORIGIN, "X-CSRF-Token": "wrong-token"}
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
             "/api/v1/auth/logout",
             headers={
                 "Origin": "https://attacker.invalid",
