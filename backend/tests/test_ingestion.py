@@ -89,6 +89,28 @@ def test_queue_claim_publication_and_duplicate_delivery(queued, tmp_path):
     assert "snapshot" not in job and "lease_token" not in job
     fresh = client.get(f"/api/v1/papers/{paper_id}")
     assert fresh.json()["processing_state"] == "ready"
+    version_id = fresh.json()["latest_document_version_id"]
+    document = client.get(f"/api/v1/document-versions/{version_id}").json()
+    assert document["page_count"] == 2 and document["figure_count"] == 2
+    assert "owner_id" not in document
+    page = client.get(f"/api/v1/document-versions/{version_id}/pages/1").json()
+    assert page["text_status"] == "available"
+    sections = client.get(f"/api/v1/document-versions/{version_id}/sections").json()["items"]
+    assert sections and all(section["spans"] for section in sections)
+    figures = client.get(
+        f"/api/v1/papers/{paper_id}/figures?document_version_id={version_id}"
+    ).json()["items"]
+    assert len(figures) == 2
+    image = client.get(figures[0]["file_url"])
+    assert image.status_code == 200 and image.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert image.headers["cache-control"] == "private, no-store"
+    assert client.get(f"/api/v1/document-versions/{version_id}/pages/0").status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/papers/{uuid.uuid4()}/figures?document_version_id={version_id}"
+        ).status_code
+        == 404
+    )
     assert (
         client.delete(
             f"/api/v1/papers/{paper_id}", headers={**headers, "If-Match": fresh.headers["etag"]}
