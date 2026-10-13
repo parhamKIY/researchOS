@@ -5,19 +5,22 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
     MetaData,
     String,
+    Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-SCHEMA_REVISION = "0003_library"
+SCHEMA_REVISION = "0004_ingestion"
 
 
 class Base(DeclarativeBase):
@@ -113,6 +116,7 @@ class PaperFile(Base):
         UniqueConstraint("owner_id", "sha256"),
         UniqueConstraint("owner_id", "paper_id", name="uq_paper_files_owner_paper"),
         UniqueConstraint("storage_key"),
+        UniqueConstraint("owner_id", "paper_id", "id", name="uq_paper_files_owner_paper_id"),
         CheckConstraint("byte_size > 0", name="positive_size"),
         CheckConstraint("length(sha256) = 64", name="sha256_length"),
     )
@@ -166,3 +170,215 @@ class StorageCleanup(Base):
     attempt: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     error_code: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DocumentVersion(Base):
+    __tablename__ = "document_versions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "paper_id", "file_id"],
+            ["paper_files.owner_id", "paper_files.paper_id", "paper_files.id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("owner_id", "id"),
+        UniqueConstraint("owner_id", "paper_id", "id", name="uq_document_versions_owner_paper_id"),
+        CheckConstraint(
+            "state IN ('queued','processing','ready','partially_ready','failed')",
+            name="valid_state",
+        ),
+        Index("ix_document_versions_owner_paper", "owner_id", "paper_id", "created_at", "id"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column()
+    paper_id: Mapped[uuid.UUID] = mapped_column()
+    file_id: Mapped[uuid.UUID] = mapped_column()
+    state: Mapped[str] = mapped_column(String(32), default="queued", server_default="queued")
+    parser_name: Mapped[str] = mapped_column(String(100))
+    parser_version: Mapped[str] = mapped_column(String(300))
+    parser_config: Mapped[dict] = mapped_column(JSONB)
+    metadata_json: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    warnings: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentPage(Base):
+    __tablename__ = "document_pages"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "document_version_id"],
+            ["document_versions.owner_id", "document_versions.id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "document_version_id",
+            "page_number",
+            name="uq_document_pages_owner_version_number",
+        ),
+        UniqueConstraint(
+            "owner_id", "document_version_id", "id", name="uq_document_pages_owner_version_id"
+        ),
+        CheckConstraint("page_number > 0 AND width > 0 AND height > 0", name="positive_geometry"),
+        CheckConstraint(
+            "text_status IN ('available','no_text','failed')", name="valid_text_status"
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column()
+    document_version_id: Mapped[uuid.UUID] = mapped_column()
+    page_number: Mapped[int] = mapped_column(Integer)
+    text: Mapped[str] = mapped_column(Text)
+    text_status: Mapped[str] = mapped_column(String(32))
+    width: Mapped[float] = mapped_column(Float)
+    height: Mapped[float] = mapped_column(Float)
+    warnings: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+
+
+class PaperSection(Base):
+    __tablename__ = "paper_sections"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "document_version_id"],
+            ["document_versions.owner_id", "document_versions.id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "document_version_id",
+            "ordinal",
+            name="uq_paper_sections_owner_version_ordinal",
+        ),
+        UniqueConstraint(
+            "owner_id", "document_version_id", "id", name="uq_paper_sections_owner_version_id"
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column()
+    document_version_id: Mapped[uuid.UUID] = mapped_column()
+    kind: Mapped[str] = mapped_column(String(64))
+    heading: Mapped[str | None] = mapped_column(String(160))
+    ordinal: Mapped[int] = mapped_column(Integer)
+    extraction_method: Mapped[str] = mapped_column(String(64))
+
+
+class SectionSpan(Base):
+    __tablename__ = "section_spans"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "document_version_id", "section_id"],
+            ["paper_sections.owner_id", "paper_sections.document_version_id", "paper_sections.id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "document_version_id", "page_id"],
+            ["document_pages.owner_id", "document_pages.document_version_id", "document_pages.id"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("start_offset >= 0 AND end_offset > start_offset", name="valid_offsets"),
+    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    document_version_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    section_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    page_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    start_offset: Mapped[int] = mapped_column(Integer, primary_key=True)
+    end_offset: Mapped[int] = mapped_column(Integer)
+
+
+class PaperFigure(Base):
+    __tablename__ = "paper_figures"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "paper_id", "document_version_id"],
+            ["document_versions.owner_id", "document_versions.paper_id", "document_versions.id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "document_version_id", "page_id"],
+            ["document_pages.owner_id", "document_pages.document_version_id", "document_pages.id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("storage_key"),
+        UniqueConstraint(
+            "owner_id",
+            "document_version_id",
+            "ordinal",
+            name="uq_paper_figures_owner_version_ordinal",
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column()
+    paper_id: Mapped[uuid.UUID] = mapped_column()
+    document_version_id: Mapped[uuid.UUID] = mapped_column()
+    page_id: Mapped[uuid.UUID] = mapped_column()
+    ordinal: Mapped[int] = mapped_column(Integer)
+    storage_key: Mapped[str] = mapped_column(String(36))
+    caption: Mapped[str | None] = mapped_column(String(2000))
+    caption_start: Mapped[int | None] = mapped_column(Integer)
+    caption_end: Mapped[int | None] = mapped_column(Integer)
+    caption_method: Mapped[str | None] = mapped_column(String(64))
+    bounding_box: Mapped[list | None] = mapped_column(JSONB)
+    extraction_method: Mapped[str] = mapped_column(String(64))
+
+
+class ProcessingJob(Base):
+    __tablename__ = "processing_jobs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "paper_id", "document_version_id"],
+            ["document_versions.owner_id", "document_versions.paper_id", "document_versions.id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "paper_id", "retry_of_job_id"],
+            ["processing_jobs.owner_id", "processing_jobs.paper_id", "processing_jobs.id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("owner_id", "paper_id", "id", name="uq_processing_jobs_owner_paper_id"),
+        CheckConstraint(
+            "state IN ('queued','running','completed','partially_completed','failed')",
+            name="valid_state",
+        ),
+        CheckConstraint(
+            "progress_percent BETWEEN 0 AND 100 AND attempt >= 0", name="valid_progress"
+        ),
+        CheckConstraint(
+            "progress_percent < 100 OR state IN ('completed','partially_completed')",
+            name="terminal_progress",
+        ),
+        CheckConstraint(
+            "state <> 'running' OR (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)",
+            name="running_lease",
+        ),
+        Index("ix_processing_jobs_dispatch", "state", "dispatch_after"),
+        Index("ix_processing_jobs_lease", "state", "lease_expires_at"),
+        Index(
+            "uq_processing_jobs_active_fingerprint",
+            "owner_id",
+            "fingerprint",
+            unique=True,
+            postgresql_where=text("state IN ('queued','running')"),
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column()
+    paper_id: Mapped[uuid.UUID] = mapped_column()
+    document_version_id: Mapped[uuid.UUID] = mapped_column()
+    kind: Mapped[str] = mapped_column(String(32), default="ingestion", server_default="ingestion")
+    state: Mapped[str] = mapped_column(String(32), default="queued", server_default="queued")
+    stage: Mapped[str | None] = mapped_column(String(64))
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    attempt: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    retry_of_job_id: Mapped[uuid.UUID | None] = mapped_column()
+    snapshot: Mapped[dict] = mapped_column(JSONB)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    dispatch_after: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    lease_token: Mapped[uuid.UUID | None] = mapped_column()
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
