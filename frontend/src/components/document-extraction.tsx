@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, ApiFailure, type Session } from "@/lib/api";
+import { evidenceParts } from "@/lib/evidence";
 
 type Job = { id: string; state: string; stage: string | null; progress_percent: number; error: { code: string } | null };
 type Version = { id: string; state: string; created_at: string; parser_name: string; parser_version: string; metadata: Record<string, unknown>; warnings: string[]; page_count: number; figure_count: number };
@@ -31,6 +32,7 @@ export function DocumentExtraction({ paperId, jobId, session, expired, changed, 
   const observed = useRef("");
   const version = versions.find((item) => item.id === selected);
   const active = job?.state === "queued" || job?.state === "running";
+  const evidence = page && span ? evidenceParts(page.text, span.start_offset, span.end_offset) : null;
 
   useEffect(() => {
     let alive = true;
@@ -126,7 +128,7 @@ export function DocumentExtraction({ paperId, jobId, session, expired, changed, 
       <details><summary>Extraction warnings and unverified PDF metadata</summary><ul>{version.warnings.map((warning) => <li key={warning}>{warning.replaceAll("_", " ")}</li>)}</ul><pre>{JSON.stringify(version.metadata, null, 2)}</pre></details>
       {version.page_count > 0 && <>
         <div className="toolbar"><button className="refresh-button" disabled={pageNumber <= 1} onClick={() => jump(pageNumber - 1)}>Previous text page</button><span>Text page {pageNumber} of {version.page_count}</span><button className="refresh-button" disabled={pageNumber >= version.page_count} onClick={() => jump(pageNumber + 1)}>Next text page</button><button className="refresh-button" onClick={() => sourcePage(pageNumber)}>View source page</button></div>
-        {page?.page_number === pageNumber ? <><p className="muted">Text: {page.text_status.replaceAll("_", " ")}{page.warnings.length ? ` · ${page.warnings.join(", ").replaceAll("_", " ")}` : ""}</p><pre className="extracted-text">{span ? <>{page.text.slice(0, span.start_offset)}<mark>{page.text.slice(span.start_offset, span.end_offset)}</mark>{page.text.slice(span.end_offset)}</> : page.text || "No usable text on this page."}</pre></> : <p role="status">Loading extracted text…</p>}
+        {page?.page_number === pageNumber ? <><p className="muted">Text: {page.text_status.replaceAll("_", " ")}{page.warnings.length ? ` · ${page.warnings.join(", ").replaceAll("_", " ")}` : ""}</p><pre className="extracted-text">{evidence ? <>{evidence.before}<mark>{evidence.quote}</mark>{evidence.after}</> : page.text || "No usable text on this page."}</pre></> : <p role="status">Loading extracted text…</p>}
         <details><summary>Detected sections ({sections.length})</summary><p className="muted">Heading patterns are candidates. Offsets refer to the stored Unicode page text, starting at zero; the end is excluded.</p>{sections.map((section) => <div key={section.id}><strong>{section.heading || section.kind}</strong><div className="toolbar">{section.spans.map((evidence) => <button className="refresh-button" key={`${evidence.page_number}:${evidence.start_offset}`} onClick={() => jump(evidence.page_number, evidence)}>Page {evidence.page_number} · {evidence.start_offset}–{evidence.end_offset}</button>)}</div></div>)}</details>
       </>}
       {figures.length > 0 && <details open><summary>Extracted raster images</summary><div className="figure-grid">{figures.map((figure) => <figure key={figure.id}>
