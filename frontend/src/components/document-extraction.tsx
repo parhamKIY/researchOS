@@ -42,7 +42,7 @@ export function DocumentExtraction({ paperId, jobId, session, expired, changed, 
         const result = await api<VersionList>(`/papers/${paperId}/document-versions`);
         const current = jobId ? await api<Job>(`/jobs/${jobId}`) : null;
         if (!alive) return;
-        setVersions(result.items); setCursor(result.next_cursor); setJob(current); setError("");
+        setVersions((previous) => [...result.items, ...previous.filter((item) => !result.items.some((latest) => latest.id === item.id))]); setCursor(result.next_cursor); setJob(current); setError("");
         setSelected((previous) => previous || result.items[0]?.id || "");
         if (current && current.state !== "queued" && current.state !== "running" && observed.current !== current.id) {
           observed.current = current.id; changed();
@@ -99,7 +99,7 @@ export function DocumentExtraction({ paperId, jobId, session, expired, changed, 
   async function moreVersions() {
     try {
       const result = await api<VersionList>(`/papers/${paperId}/document-versions?cursor=${encodeURIComponent(cursor!)}`);
-      setVersions((values) => [...values, ...result.items]); setCursor(result.next_cursor);
+      setVersions((values) => [...values, ...result.items.filter((item) => !values.some((existing) => existing.id === item.id))]); setCursor(result.next_cursor);
     } catch (err) { failure(err); }
   }
 
@@ -117,7 +117,7 @@ export function DocumentExtraction({ paperId, jobId, session, expired, changed, 
   return <section className="extraction-panel" aria-label="Document extraction">
     <div className="section-heading"><h3>Document extraction</h3><button className="refresh-button" disabled={busy || active} onClick={process}>{job?.state === "failed" ? "Retry extraction" : versions.length ? "Extract new version" : "Extract document"}</button></div>
     {error && <p role="alert" className="error-message">{error}</p>}
-    {job && <div role="status"><p>{job.state.replaceAll("_", " ")} · {job.progress_percent}%{active && job.stage ? ` · ${job.stage.replaceAll("_", " ")}` : ""}</p>{active && <progress max={100} value={job.progress_percent} aria-label="Extraction progress" />}{job.error && <p className="error-message">Extraction failed: {job.error.code.replaceAll("_", " ")}. The original PDF is available.</p>}</div>}
+    {job && <div role="status"><p>{job.state.replaceAll("_", " ")} · {job.progress_percent}%{active && job.stage ? ` · ${job.stage.replaceAll("_", " ")}` : ""}</p>{active && <progress max={100} value={job.progress_percent} aria-label="Extraction progress" />}{job.state === "failed" && job.error && <p className="error-message">Extraction failed: {job.error.code.replaceAll("_", " ")}. The original PDF is available.</p>}</div>}
     <p className="muted">Extraction runs locally. Scanned pages need OCR, which is not available yet. Reading order, section labels and caption associations require inspection. Vector figures and structured tables are not extracted.</p>
     {versions.length > 0 && <label>Extraction history<select aria-label="Extraction history" value={selected} onChange={(event) => { setSelected(event.target.value); setPageNumber(1); setPage(null); setSpan(null); setSections([]); setFigures([]); }}>
       {versions.map((item) => <option key={item.id} value={item.id}>{new Date(item.created_at).toLocaleString()} · {item.state.replaceAll("_", " ")}</option>)}
