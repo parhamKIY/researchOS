@@ -1,6 +1,6 @@
 # Architecture decisions — initial release
 
-Status: approved implementation plan; foundation components are implemented. See [development instructions](DEVELOPMENT.md) for current scope and execution checks.
+Status: foundation and private project/paper library are implemented. Parsing, durable ingestion dispatch and AI features remain planned. See [development instructions](DEVELOPMENT.md) for current scope and execution checks.
 Related contracts: [data model](DATA_MODEL.md), [API](API_CONTRACT.md), [roadmap](ROADMAP.md).
 
 ## Release boundary
@@ -28,7 +28,9 @@ flowchart LR
     Gateway --> Provider[Configured external provider]
 ```
 
-API, dispatcher, and worker use one backend package and database, deployed as separate processes in Docker Compose. The dispatcher publishes durable queued jobs; it is not an independent service codebase. Only the web entry point is exposed by default. Provider secrets and private files remain server-side. Redis is a broker, not the source of job/report truth.
+API, maintenance, and worker use one backend package and database, deployed as separate processes in Docker Compose. Maintenance retries private file cleanup and reconciles abandoned uploads; the durable job dispatcher is planned for stage 3. Only the web entry point is exposed by default. Provider secrets and private files remain server-side. Redis is a broker, not the source of job/report truth.
+
+The stage 2 frontend renders PDF pages with bundled PDF.js assets (Apache-2.0), without document scripting or interactive annotations. This browser display library is separate from selecting a backend extraction parser. Uploads use a bounded raw PDF body rather than multipart; see the implemented [API boundary](API_CONTRACT.md).
 
 ## Decisions and trade-offs
 
@@ -136,4 +138,4 @@ Architecture, data ownership/versioning, API payloads, and the end-to-end accept
 
 The runnable frontend/backend foundation, validated configuration, PostgreSQL identity migration, broker/worker connectivity, Compose, and CI configuration now exist. Local execution checks are recorded in `docs/DEVELOPMENT.md`; remote CI execution is not yet verified.
 
-Next: account provisioning, session authentication and CSRF controls, owned research projects, and the first persistent paper-library workflow. Defer README updates until the application is complete.
+Local provisioning, session authentication/CSRF, owned projects, persistent raw PDF upload/replay, private library search, file delivery and PDF.js preview now work. A maintenance process handles file cleanup. Next: evaluate backend extraction parsers and implement page-preserving asynchronous ingestion. Defer README updates until the application is complete.

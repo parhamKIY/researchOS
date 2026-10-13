@@ -1,7 +1,9 @@
 # Initial relational data model
 
-Status: `users` and `auth_sessions` are implemented in migration `0001_identity`. All other tables below remain a design for later milestones; authentication behavior is not implemented yet.
+Status: migrations `0001_identity`, `0002_projects`, and `0003_library` implement users, sessions, owned projects, the initial paper/file library, owner-constrained memberships, upload replay and pending file cleanup. All extraction, job, provider and analysis tables below remain planned.
 Related: [architecture](ARCHITECTURE.md), [API contract](API_CONTRACT.md).
+
+Stage 2 implements a subset of the paper metadata: nullable user title, privacy policy, revision and timestamps. Parser-derived metadata and document-version pointers remain pending. A paper has one immutable original file. Cleanup rows represent pending work implicitly and are removed after successful deletion; `attempt`, `error_code` and `created_at` support retry. The maintenance process expires upload replay records and reconciles old unreferenced files every minute. The broader table descriptions below include planned fields; they are not a claim that every column exists today.
 
 ## Conventions and integrity
 

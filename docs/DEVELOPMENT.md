@@ -1,8 +1,8 @@
-# Foundation development
+# Local development
 
-Implemented scope: FastAPI health endpoints and generated API docs; Next.js status page; validated server configuration; PostgreSQL identity/session schema and Alembic migration; Redis/Celery connectivity test task; Compose; locked dependencies; CI checks.
+Implemented scope: health/API docs; account provisioning, opaque session authentication and CSRF; owned project management; persistent private PDF library with replay/deduplication, title edits, search/project filtering, byte-range downloads and PDF.js page preview; retryable file cleanup; PostgreSQL migrations; Redis/Celery foundation task; Compose; locked dependencies; CI checks.
 
-Authentication endpoints, projects, PDF uploads, AI analysis, durable document-job dispatch, and provider settings are not implemented. The session tables are persistence groundwork, not working authentication. No paid API key is required for this milestone.
+Document extraction, AI analysis, durable document-job dispatch and provider settings remain pending. Stored documents are visibly marked not processed; upload creates no ingestion job. No paid API key is required for stage 2.
 
 ## Run locally
 
@@ -18,7 +18,25 @@ docker compose up -d --build --wait --wait-timeout 180
 
 Open [the workspace](http://localhost:3000) and [generated API docs](http://localhost:3000/api/docs).
 
-Only the frontend is published, on loopback. PostgreSQL, Redis, and the API remain internal. The migration container must complete before API/worker startup. Readiness requires the expected database migration and a Redis response; liveness does not require either. Worker availability is verified separately through its healthcheck and a real queued task.
+Create your account from an interactive terminal, replacing the sample email with your own:
+
+```powershell
+docker compose exec api python -m researchos.cli create-user --email you@example.com
+```
+
+The command prompts for a 12–256 character password and confirmation without echoing it. Passwords are salted scrypt hashes; no password argument or public registration endpoint is supported. Sign in through the workspace, create a project, select its card to filter/assign uploads, and upload a PDF. Select a paper to rename, display pages, download or delete it. Deleting a project preserves library papers.
+
+Only the frontend is published, on loopback. PostgreSQL, Redis, API and maintenance remain internal. The migration container must complete before API/worker/maintenance startup. Readiness requires the expected database migration and a Redis response; liveness does not require either. Worker availability is verified separately through its healthcheck and a real queued task. Maintenance health checks its last successful sweep.
+
+Private originals live in the `private-files` named volume shared by API, worker and maintenance. PostgreSQL and originals survive container recreation. Backup/restore procedures are still pending; persistence is not a backup. The API runs as UID 10001 and creates original files with mode 0600.
+
+Uploads default to 25 MiB and time out after 90 seconds; `RESEARCHOS_MAX_UPLOAD_BYTES` can change the size up to 100 MiB. Raw uploads carry `Content-Type: application/pdf`, the session CSRF header and an idempotency key. Header/end-marker acceptance does not prove structural validity. Password-protected and malformed PDFs may be stored but fail preview; comprehensive parsing remains stage 3. PDF.js renders pages without document scripts or interactive annotations; worker, fonts and maps are served locally rather than through a CDN.
+
+Maintenance retries pending deletions every minute, expires old upload replay records, and removes unreferenced generated files/temporary uploads older than 24 hours. To run one sweep manually:
+
+```powershell
+docker compose exec api python -m researchos.cli cleanup-storage
+```
 
 The environment generator preserves an existing `.env` and never prints secrets. `.env` is ignored by Git and excluded from image contexts. Do not replace its database password after persistent PostgreSQL storage has been initialized without deliberately rotating the database credential as well.
 
@@ -48,11 +66,12 @@ Run PostgreSQL/Redis/worker integration checks after the stack is ready, from th
 docker compose --profile test run --build --rm tests
 ```
 
-This uses a separate test image and checks actual migrated PostgreSQL constraints, ORM/migration agreement, API readiness, and a real Celery request/result round trip. Test writes roll back; no user password or provider credential is created. Integration tests are opt-in outside this container and are never silently replaced by SQLite or a fake Redis server.
+This uses a separate test image and checks migrated PostgreSQL constraints, ORM/migration agreement, authentication/CSRF and ownership, upload replay/deduplication/deletion, private ranges, a real Celery round trip, and an 11 MiB concurrent upload through the running frontend proxy. Most database fixtures roll back. The runtime-proxy test provisions a uniquely named disposable account, commits its test records for HTTP visibility, and removes only its own records/files in `finally`. No provider credentials are used. Integration tests are opt-in outside this container and are never silently replaced by SQLite or a fake Redis server.
 
 ## Frontend checks
 
 Node.js 22 is required; npm uses `frontend/package-lock.json`.
+PDF.js requires Node 22.13 or later within the supported Node 22 series. The `predev`/`prebuild` script copies locked PDF.js assets into Git-ignored `frontend/public/pdfjs/`; Docker copies these generated assets into the runtime image.
 
 ```powershell
 cd frontend
@@ -126,10 +145,16 @@ CI runs backend checks, frontend checks/build, and the complete Compose integrat
 
 Development workflow: commit each verified checkpoint immediately; make one push at the end of the work batch. The existing foundation changes were split retrospectively into topical commits after the user corrected the workflow; this does not recreate the original development timing.
 
+## Stage 2 acceptance
+
+Implemented and checked locally: login/logout/session invalidation, project lifecycle and ownership, paper storage/replay/deduplication, metadata revisions, project-filtered search, private file ranges, deletion retries and abandoned-file reconciliation. The browser workflow used a disposable local account and a synthetic PDF; the project and original remained available after rebuilding/recreating the application containers. PDF.js successfully displayed the stored page. A separate HTTP integration check used the actual frontend proxy and concurrent 11 MiB uploads and verified one reused paper.
+
+Execution totals and current limitations are recorded in [the stage 2 checkpoint](MILESTONE_02.md). Remote GitHub Actions execution and real AI providers are not included in local verification.
+
 ## Network diagnostics
 
 If an image pull fails, distinguish host registry access, Docker engine image access, and package access inside a container/build. A registry timeout is not evidence of an application failure. Do not expose `.env` through `docker compose config` output; use `--quiet`.
 
 Standard Compose files intentionally keep official upstream image references. Local image caching/import for network diagnosis is outside application source and must not change declared runtime behavior.
 
-Technical references: [Compose dependency conditions](https://docs.docker.com/reference/compose-file/services/), [FastAPI lifespan](https://fastapi.tiangolo.com/advanced/events/), [Next.js installation](https://nextjs.org/docs/app/getting-started/installation).
+Technical references: [Compose dependency conditions](https://docs.docker.com/reference/compose-file/services/), [FastAPI lifespan](https://fastapi.tiangolo.com/advanced/events/), [Next.js installation](https://nextjs.org/docs/app/getting-started/installation), [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [PDF.js examples](https://mozilla.github.io/pdf.js/examples/index.html).
