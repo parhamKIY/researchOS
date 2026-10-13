@@ -65,7 +65,7 @@ def test_auth_lifecycle_cookie_csrf_and_revocation(account_client):
     assert "HttpOnly" in cookie and "SameSite=lax" in cookie and "Domain=" not in cookie
     token = client.cookies.get("researchos_session")
     with Session(connection) as db:
-        stored = db.scalar(select(AuthSession))
+        stored = db.scalar(select(AuthSession).where(AuthSession.token_hash == token_hash(token)))
         assert stored.token_hash == token_hash(token)
         assert stored.csrf_token_hash == token_hash(response.json()["csrf_token"])
         assert stored.token_hash != token
@@ -111,9 +111,13 @@ def test_session_invalidations(account_client, case):
     old = client.cookies.get("researchos_session")
     with Session(connection, join_transaction_mode="create_savepoint") as db:
         if case == "inactive":
-            db.scalar(select(User)).is_active = False
+            db.scalar(
+                select(User).where(User.email_normalized == "account@example.invalid")
+            ).is_active = False
         elif case == "expired":
-            session = db.scalar(select(AuthSession))
+            session = db.scalar(
+                select(AuthSession).where(AuthSession.token_hash == token_hash(old))
+            )
             session.created_at = datetime.now(UTC) - timedelta(days=2)
             session.expires_at = datetime.now(UTC) - timedelta(days=1)
         db.commit()

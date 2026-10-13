@@ -171,14 +171,23 @@ def test_cleanup_failure_is_durable_and_retryable(library, monkeypatch):
     monkeypatch.setattr(LocalFileStore, "delete", offline)
     assert client.delete(path, headers={**headers, "If-Match": tag}).status_code == 204
     with Session(connection, join_transaction_mode="create_savepoint") as db:
-        task = db.scalar(select(StorageCleanup))
+        task = db.scalar(
+            select(StorageCleanup).where(
+                StorageCleanup.storage_key == next(storage.glob("*.pdf")).name
+            )
+        )
         assert task.attempt == 1 and task.error_code == "storage_unavailable"
-        assert db.scalar(select(PaperFile)) is None
+        assert (
+            db.scalar(select(PaperFile).where(PaperFile.paper_id == uuid.UUID(paper["id"]))) is None
+        )
     assert len(list(storage.glob("*.pdf"))) == 1
     monkeypatch.setattr(LocalFileStore, "delete", original)
     with Session(connection, join_transaction_mode="create_savepoint") as db:
         assert cleanup_storage(db, LocalFileStore(storage)) == 1
-        assert db.scalar(select(StorageCleanup)) is None
+        assert (
+            db.scalar(select(StorageCleanup).where(StorageCleanup.storage_key == task.storage_key))
+            is None
+        )
     assert list(storage.iterdir()) == []
 
 

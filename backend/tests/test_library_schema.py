@@ -21,7 +21,7 @@ pytestmark = [
 def test_library_constraints_reject_cross_owner_relations_and_duplicates(account_client, case):
     _, connection = account_client
     with Session(connection, join_transaction_mode="create_savepoint") as db:
-        owner = db.scalar(select(User.id))
+        owner = db.scalar(select(User.id).where(User.email_normalized == "account@example.invalid"))
         other = provision_user(db, "schema-other@example.invalid", PASSWORD)
         paper = Paper(owner_id=owner)
         project = Project(owner_id=other.id, name="Other user's project")

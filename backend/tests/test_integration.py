@@ -59,9 +59,12 @@ def test_identity_persistence_and_session_cascade(connection):
         )
         session.add(token)
         session.flush()
-        assert session.scalar(select(AuthSession.owner_id)) == user.id
+        assert (
+            session.scalar(select(AuthSession.owner_id).where(AuthSession.id == token.id))
+            == user.id
+        )
         session.execute(delete(User).where(User.id == user.id))
-        assert session.scalar(select(AuthSession.id)) is None
+        assert session.scalar(select(AuthSession.id).where(AuthSession.id == token.id)) is None
 
 
 @pytest.mark.parametrize("case", ["unnormalized", "duplicate", "orphan_session"])
