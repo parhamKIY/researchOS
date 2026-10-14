@@ -5,6 +5,7 @@ import { api, ApiFailure, type Session } from "@/lib/api";
 import { SystemStatus } from "@/components/system-status";
 import { ProjectLibrary } from "@/components/project-library";
 import { PaperLibrary } from "@/components/paper-library";
+import { ProviderSettings } from "@/components/provider-settings";
 
 export function ResearchWorkspace() {
   const [session, setSession] = useState<Session | null>(null);
@@ -85,6 +86,7 @@ export function ResearchWorkspace() {
           ) : <><p className="intro">Your private workspace is ready.</p>
             <ProjectLibrary key={session.user.id} session={session} expired={expired} selected={project} select={setProject} />
             <PaperLibrary key={session.user.id} session={session} expired={expired} project={project} />
+            <ProviderSettings key={session.user.id} session={session} expired={expired} />
             <details className="infrastructure-details"><summary>Infrastructure status</summary><SystemStatus /></details></>}
           <footer>ResearchOS <span>Traceable sources. Reproducible analysis.</span></footer>
         </div>

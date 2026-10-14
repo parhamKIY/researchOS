@@ -57,6 +57,21 @@ button:disabled { opacity: .55; cursor: wait; }
 .extraction-panel pre { overflow: auto; max-height: 460px; background: #f5f8f1; padding: 14px; border-radius: 6px; }
 .extraction-panel .extracted-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; line-height: 1.7; }
 .extraction-panel progress { width: 100%; accent-color: var(--accent); }
+.settings-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.provider-settings details { margin: 18px 0; }
+.provider-settings summary { cursor: pointer; color: var(--accent); font-size: 13px; margin-bottom: 14px; }
+.provider-form, .provider-card { border: 1px solid var(--line); border-radius: 8px; margin: 20px 0; padding: 20px; }
+.provider-card .paper-state { white-space: normal; text-align: right; }
+.provider-settings fieldset { border: 1px solid var(--line); margin: 15px 0; padding: 12px; }
+.provider-settings legend { font-size: 11px; color: var(--muted); }
+.check-label { display: inline-flex; align-items: center; gap: 8px; margin: 10px 18px 10px 0; font-size: 12px; }
+.check-label input { width: auto; margin: 0; }
+.model-row { padding: 18px 0; border-top: 1px solid var(--line); font-size: 13px; overflow-wrap: anywhere; }
+.model-row small, .usage-table small { display: block; color: var(--muted); font-size: 11px; margin-top: 8px; }
+.usage-table { overflow-x: auto; font-size: 12px; }
+.usage-table table { border-collapse: collapse; width: 100%; }
+.usage-table th, .usage-table td { text-align: left; padding: 12px; border-bottom: 1px solid var(--line); }
+@media (max-width: 600px) { .settings-fields { grid-template-columns: minmax(0, 1fr); } .provider-form, .provider-card { padding: 14px; } }
 .extraction-panel mark { background: #f5e9a8; }
 .figure-grid { display: grid; gap: 16px; }
 .figure-grid figure { margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
