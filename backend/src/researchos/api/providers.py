@@ -23,8 +23,16 @@ from researchos.services.providers import (
     routing_read,
 )
 from researchos.services.resources import cursor_filter, cursor_scope, encode_cursor, etag
+from researchos.services.system_llm import settings_read
 
 router = APIRouter(prefix="/api/v1", tags=["AI provider settings"])
+
+
+@router.get("/settings/system-model")
+def system_default(db: Database, identity: Authenticated):
+    return settings_read(db)
+
+
 Capability = Literal["text", "vision", "embeddings"]
 Task = Literal[
     "paper_summary", "methodology", "research_gaps", "paper_chat", "figure_analysis", "embeddings"

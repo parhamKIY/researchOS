@@ -5,10 +5,12 @@ from fastapi import APIRouter, Header, Query, Request
 from pydantic import BaseModel, ConfigDict, StrictBool
 from sqlalchemy import select
 
+from researchos.api.admin_schemas import SystemLLMWrite
 from researchos.api.dependencies import Administrator, AdminMutation, Database
 from researchos.api.providers import page_rows
 from researchos.domain.models import User
 from researchos.services.admin import overview, set_user_active, user_read
+from researchos.services.system_llm import settings_read, verify_and_apply
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Administration"])
 
@@ -21,6 +23,29 @@ class UserStatusWrite(BaseModel):
 @router.get("/overview")
 def admin_overview(db: Database, identity: Administrator):
     return overview(db)
+
+
+@router.get("/llm")
+def llm_settings(db: Database, identity: Administrator):
+    return settings_read(db, admin=True)
+
+
+@router.post("/llm/verify-and-apply")
+async def llm_update(
+    payload: SystemLLMWrite,
+    request: Request,
+    db: Database,
+    identity: AdminMutation,
+    if_match: Annotated[str | None, Header()] = None,
+):
+    return await verify_and_apply(
+        db,
+        identity.user.id,
+        payload,
+        if_match,
+        request.app.state.settings,
+        session_id=identity.session.id,
+    )
 
 
 @router.get("/users")
