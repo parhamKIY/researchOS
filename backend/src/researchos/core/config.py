@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     database_url: SecretStr
     redis_url: SecretStr
     session_secret: SecretStr
+    credential_encryption_key: SecretStr | None = None
     public_origin: AnyHttpUrl = AnyHttpUrl("http://localhost:3000")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     health_timeout_seconds: int = Field(default=2, ge=1, le=10)
@@ -30,6 +31,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_infrastructure(self) -> "Settings":
+        if self.credential_encryption_key:
+            from researchos.core.credentials import CredentialUnavailable, decode_key
+
+            try:
+                decode_key(self.credential_encryption_key.get_secret_value())
+            except CredentialUnavailable:
+                raise ValueError("Credential encryption key must encode 32 bytes") from None
         database = urlsplit(self.database_url.get_secret_value())
         redis = urlsplit(self.redis_url.get_secret_value())
         if database.scheme != "postgresql+psycopg" or not database.hostname or not database.path:

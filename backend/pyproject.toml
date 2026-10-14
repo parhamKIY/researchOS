@@ -14,11 +14,12 @@ dependencies = [
   "celery[redis]>=5.4,<6",
   "pypdf[image]>=6.20.1,<7",
   "pdfplumber>=0.11,<1",
+  "httpx>=0.27,<1",
+  "cryptography>=45,<51",
 ]
 
 [dependency-groups]
 dev = [
-    "httpx>=0.27,<1",
     "pytest>=8,<10",
     "reportlab>=4.4,<5",
     "ruff>=0.9,<1",
