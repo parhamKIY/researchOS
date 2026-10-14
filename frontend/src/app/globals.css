@@ -92,6 +92,17 @@ a:focus-visible, button:focus-visible { outline: 3px solid #96b49c; outline-offs
 .brand-dot { color: #97ab82; margin-left: -9px; }
 .sidebar-label { margin: 65px 12px 18px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.8px; color: var(--muted); }
 .active-nav { background: #dce8db; padding: 14px 16px; border-radius: 7px; display: flex; gap: 12px; font-size: 14px; font-weight: 600; }
+.sidebar-nav { padding: 14px 16px; border-radius: 7px; display: flex; gap: 12px; font-size: 14px; margin: 4px 0; }
+.sidebar-nav:hover { background: #e2ebdf; }
+.admin-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 0 0 26px; }
+.admin-stats div, .system-model-card { border: 1px solid var(--line); border-radius: 9px; background: #f5f8f0; padding: 20px; }
+.admin-stats dt { color: var(--muted); font-size: 12px; }
+.admin-stats dd { margin: 10px 0 0; font-size: 26px; }
+.system-model-card { margin: 20px 0; overflow-wrap: anywhere; }
+.admin-panel .intro { margin: 20px 0; }
+.admin-panel .admin-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.admin-panel .admin-fields legend { margin-bottom: 15px; font-size: 14px; }
+@media (max-width: 600px) { .admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .sidebar-foot { margin-top: auto; padding: 32px 12px 0; font-size: 12px; color: #64786b; line-height: 2; }
 .sidebar-foot small { margin-left: 15px; color: #859184; font-size: 11px; }
 .mini-dot { display: inline-block; width: 6px; height: 6px; background: #88a874; border-radius: 50%; margin-right: 8px; }

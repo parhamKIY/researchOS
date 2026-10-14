@@ -1,4 +1,4 @@
-export type Session = { user: { id: string; email: string }; expires_at: string; csrf_token: string };
+export type Session = { user: { id: string; email: string; is_admin: boolean }; expires_at: string; csrf_token: string };
 
 export class ApiFailure extends Error {
   constructor(public status: number, message: string) { super(message); }

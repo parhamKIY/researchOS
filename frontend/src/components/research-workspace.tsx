@@ -6,8 +6,10 @@ import { SystemStatus } from "@/components/system-status";
 import { ProjectLibrary } from "@/components/project-library";
 import { PaperLibrary } from "@/components/paper-library";
 import { ProviderSettings } from "@/components/provider-settings";
+import { AdminPanel } from "@/components/admin-panel";
+import { SystemModelNotice } from "@/components/system-model-notice";
 
-export function ResearchWorkspace() {
+export function ResearchWorkspace({ view = "overview" }: { view?: "overview" | "admin" }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -60,16 +62,17 @@ export function ResearchWorkspace() {
       <aside className="sidebar">
         <a href="/" className="brand"><span className="brand-mark">R</span>ResearchOS<span className="brand-dot">.</span></a>
         <p className="sidebar-label">Your workspace</p>
-        <div className="active-nav"><span>◈</span> Overview</div>
+        <a href="/" className={view === "overview" ? "active-nav" : "sidebar-nav"} aria-current={view === "overview" ? "page" : undefined}><span>◈</span> Overview</a>
+        {session?.user.is_admin && <a href="/admin" className={view === "admin" ? "active-nav" : "sidebar-nav"} aria-current={view === "admin" ? "page" : undefined}><span>◇</span> Administration</a>}
         <div className="sidebar-foot"><span className="mini-dot" />Private research workspace</div>
       </aside>
       <main>
-        <header className="topbar"><span>Workspace / Overview</span>
+        <header className="topbar"><span>Workspace / {view === "admin" ? "Administration" : "Overview"}</span>
           {session ? <div className="account"><span>{session.user.email}</span><button onClick={logout} disabled={busy}>Sign out</button></div> : <span className="local-label">PRIVATE · LOCAL</span>}
         </header>
         <div className="main-content">
-          <p className="eyebrow">A place for lasting knowledge</p>
-          <h1>Your research,<br /><span>connected to its evidence.</span></h1>
+          <p className="eyebrow">{view === "admin" ? "System administration" : "A place for lasting knowledge"}</p>
+          {view === "admin" ? <h1>Administration<span>.</span></h1> : <h1>Your research,<br /><span>connected to its evidence.</span></h1>}
           {error && <p role="alert" className="error-message">{error}</p>}
           {loading ? <p role="status" className="intro">Opening your workspace…</p> : !session ? (
             <section className="form-panel">
@@ -83,9 +86,10 @@ export function ResearchWorkspace() {
               <p className="muted">Accounts are created through local setup. Public registration is unavailable.</p>
               {error && <button className="refresh-button" onClick={restore} disabled={busy}>Retry connection</button>}
             </section>
-          ) : <><p className="intro">Your private workspace is ready.</p>
+          ) : view === "admin" ? session.user.is_admin ? <AdminPanel key={session.user.id} session={session} expired={expired} /> : <p role="alert" className="error-message">Administrator access is required. <a href="/">Return to your workspace.</a></p> : <><p className="intro">Your private workspace is ready.</p>
             <ProjectLibrary key={session.user.id} session={session} expired={expired} selected={project} select={setProject} />
             <PaperLibrary key={session.user.id} session={session} expired={expired} project={project} />
+            <SystemModelNotice key={`system-${session.user.id}`} expired={expired} />
             <ProviderSettings key={session.user.id} session={session} expired={expired} />
             <details className="infrastructure-details"><summary>Infrastructure status</summary><SystemStatus /></details></>}
           <footer>ResearchOS <span>Traceable sources. Reproducible analysis.</span></footer>
