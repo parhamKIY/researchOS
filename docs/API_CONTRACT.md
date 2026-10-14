@@ -1,10 +1,10 @@
 # Initial REST API contract
 
-Status: version 0.4. Identity, projects/library/extraction and provider/model/routing/usage endpoints are implemented. Analysis endpoints remain planned. Typed runtime documentation is available at `/api/docs`; later report fields below are not all implemented.
+Status: version 0.5. Identity, projects/library/extraction, personal provider/model/routing/usage and administration endpoints are implemented. Analysis endpoints remain planned. Typed runtime documentation is available at `/api/docs`; later report fields below are not all implemented.
 
 ## Implemented stage 4 boundary
 
-- Provider CRUD, model CRUD, routing GET/PUT and provider connection tests follow the routes listed below. All require session ownership, with CSRF on mutations and ETags on edits/deletes/routing replacement. Lists have signed cursors and limits 1–100, default 20. Unknown fields, arbitrary endpoints, invalid model IDs and forged capability-source fields are rejected.
+- Personal provider CRUD, model CRUD, routing GET/PUT and provider connection tests follow the routes listed below. All require session ownership, with CSRF on mutations and ETags on edits/deletes/routing replacement. Lists have signed cursors and limits 1–100, default 20. Unknown fields, arbitrary endpoints on personal connections, invalid model IDs and forged capability-source fields are rejected. Administrator-managed endpoints are described separately below.
 - Supported adapters are `gemini` and `mock`. Provider creation requires a write-only `api_key` for Gemini and forbids it for mock. PATCH adds `clear_credential: true` for removing the saved key; key replacement and clearing cannot occur together. DELETE disables the connection, clears ciphertext and hides it from reads, retaining model/usage history. It does not revoke the external Google key.
 - Model IDs match `[A-Za-z0-9][A-Za-z0-9._-]{0,199}`. Capabilities are a nonempty unique subset of `text`, `vision`, `embeddings`, always marked `manual`. Parameters currently allow only optional temperature 0–2 and integer max output tokens 16–8192. Model DELETE disables rather than deleting history; PATCH can reenable.
 - Routing tasks are `paper_summary`, `methodology`, `research_gaps`, `paper_chat`, `figure_analysis`, `embeddings`. PUT atomically replaces up to six rules; model/provider ownership, enablement, declared capability and exact allowed provider set are checked. A stale aggregate ETag returns 412. Configured fallback execution belongs to the later analysis gateway.
@@ -13,6 +13,23 @@ Status: version 0.4. Identity, projects/library/extraction and provider/model/ro
 - The settings UI can change saved models and parameters without restarting the backend. Complete paper reports, provider model discovery, server encryption-key rotation and spending limits are not implemented in this stage.
 All resource routes below are relative to `/api/v1`.
 Related: [architecture](ARCHITECTURE.md), [data model](DATA_MODEL.md).
+
+## Implemented administration boundary
+
+Routes are relative to `/api/v1`. Session responses include `user.is_admin`; every admin request rechecks the stored role. No public endpoint grants roles. Mutations require trusted origin and CSRF.
+
+| Route | Behavior |
+|---|---|
+| `GET /admin/overview` | Admin-only aggregate account/project/paper counts; no private content. |
+| `GET /admin/users` | Admin-only identities, status, role, revision and `etag`; signed cursor, limit 1–100. No password hashes. |
+| `PATCH /admin/users/{id}` | Only `{is_active: boolean}` and the account's `If-Match`. Disabling revokes sessions. Own/admin accounts are protected (409). |
+| `GET /admin/llm` | Singleton `revision`, `etag`, nullable `active`, latest 20 safe checks. No keys/ciphertext. |
+| `POST /admin/llm/verify-and-apply` | Aggregate `If-Match`, `{adapter, model_name, base_url?, api_key?, parameters?}`; returns `{applied, check, settings}`. Expected probe failures return 200 with `applied: false`; active settings stay unchanged. |
+| `GET /settings/system-model` | Signed-in users; active model/protocol/parameters/mode/check time, revision and etag. Endpoint/key status/history omitted. |
+
+Admin adapters: `gemini`, `openai_compatible`, `mock`. Gemini accepts only its official HTTPS base. Compatible providers require a public HTTPS base on port 443 without credentials/query/fragment/literal IP; the server appends `/chat/completions`. Compatible model IDs may include `/` and `:`; Gemini keeps its stricter pattern. Keys contain visible ASCII and are write-only. An omitted key is reused only for identical protocol and normalized base. Mock accepts no URL/key.
+
+Probes send one fixed public message, capped at 256 output tokens with bounded time. Admin probes do not retry, follow redirects or use environment proxies. Ten new checks/minute system-wide are allowed, including pending checks. Missing ETag returns 428; stale ETag before/after the test returns 412. Role and session are rechecked before activation. Failed/stale/superseded keys are erased; interrupted probes recover after five minutes. Explicit personal text routes take precedence over the verified system default; an invalid private route never silently falls back. Paper analysis and document-consent enforcement remain stage 5 work.
 
 ## Implemented stage 2 boundary
 

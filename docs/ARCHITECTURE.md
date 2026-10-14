@@ -152,6 +152,16 @@ Connectivity testing sends one fixed public message, never a paper, using the se
 
 Contract sources: [Gemini generateContent](https://ai.google.dev/api/generate-content), [API key handling](https://ai.google.dev/gemini-api/docs/api-key), [model metadata](https://ai.google.dev/api/models). Successful calls in HTTP transport fixtures do not establish successful live-provider connectivity. Local verification and limits are recorded in [stage 4](MILESTONE_04.md).
 
+## Implemented administrator extension
+
+The `/admin` panel manages account status and the global default text provider. Administrator dependencies check the live stored role; CSRF/origin and revision checks guard mutations. Initial roles use `create-admin` / `grant-admin` CLI commands. Counts and account status do not grant access to another user's private papers or keys.
+
+System candidates are encrypted under a separate authenticated context. The application commits a pending candidate before external I/O without changing the active pointer. A successful bounded text probe rechecks role/session and compares the global revision before atomic activation. Failures/stale tests retain the active configuration and erase candidate keys. Superseded keys are also erased; maintenance recovers pending probes older than five minutes. The text resolver prefers explicit personal routes and otherwise snapshots the active system default. Future analysis must separately implement document consent and usage accounting.
+
+The compatible adapter uses Chat Completions with a configurable public HTTPS API base. It rejects private/mixed DNS answers and pins the validated IP at TCP connect while retaining hostname verification/SNI. Redirects and environment proxies are disabled. Gemini keeps its official fixed endpoint; mock remains explicitly local. API key reuse is limited to the identical protocol and endpoint, and admin probes never retry automatically. Test/verification details are in [the admin checkpoint](ADMIN_PANEL.md).
+
+Protocol references: [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create), [HTTPX transports](https://www.python-httpx.org/advanced/transports/), [HTTPCore network backends](https://www.encode.io/httpcore/network-backends/), [SSRF prevention](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).
+
 ## Implemented extraction boundary
 
 The replaceable parser contract is implemented with locked pypdf, pdfplumber and Pillow. Selection evidence and licensing are in [the parser evaluation](PARSER_EVALUATION.md). The full Docling ML/OCR pipeline is not installed or benchmarked. Page text, heuristic heading spans, PDF-info metadata/DOI candidates and embedded raster images retain page/version provenance. Captions are explicitly candidates, and metadata is unverified. OCR, vector drawings and structured tables are unavailable.

@@ -135,6 +135,28 @@ npm run dev
 
 The backend URL is server-only. Next.js rewrites are evaluated during development/build; changing the container routing target requires a frontend rebuild. No `NEXT_PUBLIC` secret configuration is used.
 
+## Administrator setup
+
+Create an administrator through the trusted local terminal after migrations. Replace the example email with your own; the CLI prompts for a 12–256 character password without printing it.
+
+```powershell
+docker compose exec api python -m researchos.cli create-admin --email you@example.com
+```
+
+For an existing active account, grant the role without changing its password:
+
+```powershell
+docker compose exec api python -m researchos.cli grant-admin --email you@example.com
+```
+
+Sign in at `http://localhost:3000/admin`. Choose the protocol, API base URL and exact model ID; enter the provider key only in the password field. Use **Test connection and apply**. A failed probe keeps the active configuration. A successful probe changes the default without a server restart. Mock verifies only a local fixture. The admin operation does not send a paper and does not automatically retry a possibly paid request.
+
+Custom URLs must be public HTTPS on port 443. Internal/self-hosted private-network endpoints and redirecting endpoints are not supported. Enter the API base (for example `/v1` or `/api/v1`), not the full `/chat/completions` path. Compatible providers must support Chat Completions and `max_completion_tokens`; protocol or parameter mismatches fail before activation. Gemini uses its official fixed endpoint.
+
+Keys remain encrypted on the server using the existing master key; never rotate or delete that master key to change a provider key. Blank key input reuses the current key only for the identical protocol and normalized URL. Previously active, failed and abandoned candidates do not retain usable keys. Personal routes remain explicit overrides; paper analysis is still a future milestone.
+
+Detailed scope and local evidence: [administrator checkpoint](ADMIN_PANEL.md).
+
 ## Migrations and checks
 
 ```powershell
