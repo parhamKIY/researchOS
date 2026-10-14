@@ -3,9 +3,24 @@ import uuid
 
 import pytest
 
-from researchos.core.credentials import CredentialCipher, CredentialUnavailable
+from researchos.core.credentials import (
+    CredentialCipher,
+    CredentialUnavailable,
+    SystemCredentialCipher,
+)
 
 KEY = base64.urlsafe_b64encode(b"0" * 32).decode()
+
+
+def test_system_key_is_bound_to_candidate_and_separate_from_personal_keys():
+    owner, candidate = uuid.uuid4(), uuid.uuid4()
+    system = SystemCredentialCipher(KEY)
+    encrypted = system.encrypt("explicit-system-fixture-key", owner, candidate)
+    assert system.decrypt(encrypted, owner, candidate) == "explicit-system-fixture-key"
+    with pytest.raises(CredentialUnavailable):
+        system.decrypt(encrypted, owner, uuid.uuid4())
+    with pytest.raises(CredentialUnavailable):
+        CredentialCipher(KEY).decrypt(encrypted, owner, candidate)
 
 
 def test_authenticated_encryption_random_nonce_and_owned_context():

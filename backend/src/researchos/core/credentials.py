@@ -50,3 +50,9 @@ class CredentialCipher:
             )
         except (ValueError, InvalidTag, UnicodeError):
             raise CredentialUnavailable("Stored credential is unavailable") from None
+
+
+class SystemCredentialCipher(CredentialCipher):
+    @staticmethod
+    def _context(owner: uuid.UUID, provider: uuid.UUID) -> bytes:
+        return f"researchos:system-key:v1:{provider}".encode()

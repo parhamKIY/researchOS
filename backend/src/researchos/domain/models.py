@@ -20,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-SCHEMA_REVISION = "0006_admin"
+SCHEMA_REVISION = "0007_system_llm"
 
 
 class Base(DeclarativeBase):
@@ -51,6 +51,55 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SystemProviderCandidate(Base):
+    __tablename__ = "system_provider_candidates"
+    __table_args__ = (
+        CheckConstraint(
+            "adapter IN ('gemini', 'openai_compatible', 'mock')", name="supported_adapter"
+        ),
+        CheckConstraint(
+            "state IN ('testing', 'failed', 'applied', 'superseded', 'stale')", name="valid_state"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    adapter: Mapped[str] = mapped_column(String(30))
+    base_url: Mapped[str | None] = mapped_column(String(500))
+    model_name: Mapped[str] = mapped_column(String(200))
+    parameters: Mapped[dict] = mapped_column(JSONB, default=dict)
+    encrypted_credential: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(String(20), default="testing")
+    error_code: Mapped[str | None] = mapped_column(String(60))
+    outcome_unknown: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    execution_mode: Mapped[str] = mapped_column(String(10))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
+class SystemLLMSettings(Base):
+    __tablename__ = "system_llm_settings"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="singleton"),
+        CheckConstraint("revision > 0", name="positive_revision"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    active_candidate_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("system_provider_candidates.id", ondelete="RESTRICT")
+    )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
