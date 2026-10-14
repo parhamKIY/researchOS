@@ -1,6 +1,6 @@
 # Architecture decisions — initial release
 
-Status: foundation, private project/paper library and versioned local document extraction are implemented. AI/provider features remain planned. See [development instructions](DEVELOPMENT.md) for current scope and execution checks.
+Status: foundation, private library, versioned extraction and provider/model/routing settings are implemented. Gemini's text adapter and a labeled local mock are available. Paper analysis and successful live-provider verification remain pending. See [development instructions](DEVELOPMENT.md).
 Related contracts: [data model](DATA_MODEL.md), [API](API_CONTRACT.md), [roadmap](ROADMAP.md).
 
 ## Release boundary
@@ -138,7 +138,19 @@ Architecture, data ownership/versioning, API payloads, and the end-to-end accept
 
 The runnable frontend/backend foundation, validated configuration, PostgreSQL identity migration, broker/worker connectivity, Compose, and CI configuration now exist. Local execution checks are recorded in `docs/DEVELOPMENT.md`; remote CI execution is not yet verified.
 
-Local provisioning, session authentication/CSRF, owned projects, persistent raw PDF upload/replay, private file delivery, PDF.js preview and asynchronous extraction now work. Next: secure provider/model settings. Defer README updates until the application is complete.
+Local provisioning, session authentication/CSRF, owned projects, private PDFs, asynchronous extraction and provider settings now work. Next: verify a live Gemini connection, then implement evidence-grounded analysis. Defer README updates until the application is complete.
+
+## Implemented provider boundary
+
+Provider connections and models are private, versioned server-side records. Keys use AES-256-GCM with a fresh nonce and owner/provider/version-associated data; the independent encryption key is held in local server configuration. Read schemas return only a constant credential status. Replacement increments the credential revision; clearing/deleting removes stored ciphertext. Provider deletion is soft so model/usage history survives. Server key rotation/reencryption is not yet implemented: preserve the encryption key with database backups.
+
+The first live adapter targets Gemini's fixed HTTPS REST endpoint; arbitrary URLs and redirects are rejected. HTTPX is already a locked application dependency, and the small text-provider interface also supports an explicitly labeled local mock. [LiteLLM's SDK](https://docs.litellm.ai/docs/python_sdk) was assessed for its broad provider coverage; introducing that integration layer does not simplify this initial single-live-provider slice. No proxy service or model-name capability inference was added. New providers can implement the same interface.
+
+Models declare text, vision and embedding capabilities with source `manual`. Generation parameters are a strict bounded schema. Task routing atomically saves primary and optional fallback models and the exact explicitly allowed provider set; all models/providers are revalidated when resolved. This milestone configures future task routes; document analysis, automatic fallback execution, vision, embeddings and chat remain later work.
+
+Connectivity testing sends one fixed public message, never a paper, using the selected saved model and its current parameters. Output tokens are capped at 256 for the test. The adapter has bounded response size and timeouts and normalizes errors without exposing upstream bodies. Only an explicit 429 or connection failure permits one retry after 0.5 seconds. Ambiguous read/write timeouts and server outcomes are recorded without automatic retry. Each attempt records safe provider/model snapshots, latency, available token counts (including thought/total tokens) and nullable cost. The mock reports synthetic counts and zero provider charge; Gemini cost stays unknown because the implemented response does not supply billing cost.
+
+Contract sources: [Gemini generateContent](https://ai.google.dev/api/generate-content), [API key handling](https://ai.google.dev/gemini-api/docs/api-key), [model metadata](https://ai.google.dev/api/models). Successful calls in HTTP transport fixtures do not establish successful live-provider connectivity. Local verification and limits are recorded in [stage 4](MILESTONE_04.md).
 
 ## Implemented extraction boundary
 

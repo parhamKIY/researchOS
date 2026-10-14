@@ -2,7 +2,7 @@
 
 Implemented scope: health/typed API docs; account provisioning, opaque session authentication and CSRF; owned projects/private PDFs; PDF.js preview; versioned page text, heuristic section spans, unverified metadata and raster images; durable Celery ingestion/progress/retry and expired-lease recovery; private cleanup; migrations; Compose; locked dependencies; CI checks.
 
-Provider settings and AI analysis remain pending. Upload queues local extraction by default and needs no paid API key. Extraction limitations and verification are recorded in [stage 3](MILESTONE_03.md) and [parser evaluation](PARSER_EVALUATION.md).
+Provider/model settings, encrypted keys, routing and usage are implemented. AI paper analysis remains pending. Upload queues local extraction and needs no paid key. Provider verification is recorded in [stage 4](MILESTONE_04.md); extraction limits are in [stage 3](MILESTONE_03.md).
 
 ## Run locally
 
@@ -25,6 +25,16 @@ docker compose exec api python -m researchos.cli create-user --email you@example
 ```
 
 The command prompts for a 12–256 character password and confirmation without echoing it. Passwords are salted scrypt hashes; no password argument or public registration endpoint is supported. Sign in through the workspace, create a project, select its card to filter/assign uploads, and upload a PDF. Select a paper to rename, display pages, download or delete it. Deleting a project preserves library papers.
+
+## Configure Gemini or the local mock
+
+Rerun `python scripts/bootstrap_env.py` on an existing checkout before rebuilding: it appends a new independent encryption key only if none is configured, preserving database/session secrets and never printing them. Restart/recreate the backend services to load newly added environment fields. Missing encryption configuration closes Gemini credential writes/reads with a safe 503, while the library/local mock remain usable. Preserve `RESEARCHOS_CREDENTIAL_ENCRYPTION_KEY` with database backups; replacing it makes saved keys unreadable. Server key rotation is not implemented.
+
+After signing in, open AI providers & models. Add Google Gemini and enter the key only in the password field; the saved response contains no key characters. Add the exact model ID from your Google account and manually declare its capabilities. Test a text model explicitly with Test Gemini connection; the UI states that a fixed message will be sent and quota/cost may be incurred. The test output limit is 256, not a guaranteed billing ceiling. No paper is transmitted. Raw provider responses and credentials are not recorded in usage.
+
+For local verification, choose Mock and an arbitrary valid model ID such as `fixture-model`. Results are labeled MOCK and counts are synthetic. Under Default models by task, choose primary/optional fallback models and save routes. Changes affect subsequent connectivity tests immediately. Automatic document analysis/fallback execution is next-stage work. Vision/embedding settings do not imply their execution has been implemented or verified.
+
+Provider key replacement and local removal are under Provider settings. Deleting a provider disables its connection and removes its stored key while retaining usage history; revoke the external key through Google separately if wanted. The same settings section shows safe usage with unknown costs/counts preserved.
 
 Only the frontend is published, on loopback. PostgreSQL, Redis, API and maintenance remain internal. The migration container must complete before API/worker/maintenance startup. Readiness requires the expected database migration and a Redis response; liveness does not require either. Worker availability is verified separately through its healthcheck and a real queued task. Maintenance health checks its last successful sweep.
 

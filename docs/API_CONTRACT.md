@@ -1,6 +1,16 @@
 # Initial REST API contract
 
-Status: version 0.3. Health, authentication, projects, paper library and owned extraction/job endpoints are implemented. Analysis and provider endpoints remain planned. Generated typed runtime documentation is available at `/api/docs` through the frontend. Planned payload fields below are not all implemented.
+Status: version 0.4. Identity, projects/library/extraction and provider/model/routing/usage endpoints are implemented. Analysis endpoints remain planned. Typed runtime documentation is available at `/api/docs`; later report fields below are not all implemented.
+
+## Implemented stage 4 boundary
+
+- Provider CRUD, model CRUD, routing GET/PUT and provider connection tests follow the routes listed below. All require session ownership, with CSRF on mutations and ETags on edits/deletes/routing replacement. Lists have signed cursors and limits 1–100, default 20. Unknown fields, arbitrary endpoints, invalid model IDs and forged capability-source fields are rejected.
+- Supported adapters are `gemini` and `mock`. Provider creation requires a write-only `api_key` for Gemini and forbids it for mock. PATCH adds `clear_credential: true` for removing the saved key; key replacement and clearing cannot occur together. DELETE disables the connection, clears ciphertext and hides it from reads, retaining model/usage history. It does not revoke the external Google key.
+- Model IDs match `[A-Za-z0-9][A-Za-z0-9._-]{0,199}`. Capabilities are a nonempty unique subset of `text`, `vision`, `embeddings`, always marked `manual`. Parameters currently allow only optional temperature 0–2 and integer max output tokens 16–8192. Model DELETE disables rather than deleting history; PATCH can reenable.
+- Routing tasks are `paper_summary`, `methodology`, `research_gaps`, `paper_chat`, `figure_analysis`, `embeddings`. PUT atomically replaces up to six rules; model/provider ownership, enablement, declared capability and exact allowed provider set are checked. A stale aggregate ETag returns 412. Configured fallback execution belongs to the later analysis gateway.
+- `POST /providers/{id}/test` takes `{model_configuration_id}` and tests a text-capable configuration from that exact provider. It sends only a fixed connection message and may consume quota/cost. Expected provider errors return HTTP 200 with `status: failed`, a safe code, mode, checked time, usage IDs and an outcome-unknown flag; local auth/ownership/validation/configuration errors retain standard HTTP errors. Tests are limited to ten recorded attempts/minute per owner before starting a new test; a bounded retry may add a second attempt. Vision and embedding declarations are not verified by this probe.
+- `GET /analytics/usage` lists owner-private attempt records: safe names/IDs, task, mode, state, attempt, available input/output/thought/total token counts, latency, nullable cost/currency/source and timestamp. No prompt, output, credential or encrypted value is returned. Mock counts are synthetic. Gemini billing cost is not inferred from token counts.
+- The settings UI can change saved models and parameters without restarting the backend. Complete paper reports, provider model discovery, server encryption-key rotation and spending limits are not implemented in this stage.
 All resource routes below are relative to `/api/v1`.
 Related: [architecture](ARCHITECTURE.md), [data model](DATA_MODEL.md).
 

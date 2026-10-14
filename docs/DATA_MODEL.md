@@ -1,6 +1,8 @@
 # Initial relational data model
 
-Status: migrations through `0004_ingestion` implement identity, owned projects/papers/files, replay/cleanup, extraction versions/pages/sections/spans/raster figures and durable ingestion jobs. Provider and analysis tables remain planned.
+Status: migrations through `0005_providers` implement identity, private papers/extraction/jobs and owned provider connections, model configurations, routing settings/rules and AI usage records. Analysis/report/evidence tables remain planned.
+
+Stage 4 stores encrypted credentials on the provider connection, with authenticated owner/provider binding. Provider/model composite keys constrain model ownership and usage records to their exact provider/model pair. Providers are soft-deleted and credentials removed; models can be disabled and reenabled. Usage keeps safe name snapshots after configuration changes, never prompts, raw outputs or keys. Routing settings initialize lazily with revision 1; an ETag guards atomic full replacement. Capabilities remain manually declared. Costs/token counts are nullable, and mock observations are explicitly synthetic. The initial usage table records connectivity attempts; job/report-linked billing and budget enforcement remain later work.
 Related: [architecture](ARCHITECTURE.md), [API contract](API_CONTRACT.md).
 
 User paper metadata remains a bounded subset: nullable title, privacy policy, revision and timestamps. Parsed PDF-info metadata and DOI candidates are stored separately on each document version, without overwriting the title. Latest version/job IDs are derived in reads. A paper has one immutable original file. Cleanup rows represent pending work implicitly and are removed after successful deletion. The broader table descriptions below include planned fields; they are not a claim that every column exists today.
