@@ -17,6 +17,7 @@ from researchos.api.health import router
 from researchos.api.jobs import router as jobs_router
 from researchos.api.papers import router as papers_router
 from researchos.api.projects import router as projects_router
+from researchos.api.providers import router as providers_router
 from researchos.core.config import Settings
 from researchos.infrastructure.database import build_engine
 from researchos.services.health import HealthProbe, InfrastructureHealth
@@ -133,4 +134,5 @@ def create_app(settings: Settings | None = None, probe: HealthProbe | None = Non
     app.include_router(papers_router)
     app.include_router(jobs_router)
     app.include_router(documents_router)
+    app.include_router(providers_router)
     return app
