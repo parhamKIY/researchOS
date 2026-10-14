@@ -3,7 +3,21 @@
 import argparse
 import json
 import os
+import time
 from pathlib import Path
+
+
+def write_progress(work: Path, current: int, total: int):
+    temporary = work / "progress.tmp"
+    for _ in range(5):
+        try:
+            temporary.write_text(json.dumps({"current": current, "total": total}), encoding="utf-8")
+            temporary.replace(work / "progress.json")
+            return
+        except PermissionError:
+            # Windows readers can briefly prevent replacement. Progress is best-effort;
+            # the validated final result remains authoritative for completion.
+            time.sleep(0.01)
 
 
 def main():
@@ -26,9 +40,7 @@ def main():
     from researchos.processing.pypdf_adapter import PypdfParser
 
     def progress(current, total):
-        temporary = args.work / "progress.tmp"
-        temporary.write_text(json.dumps({"current": current, "total": total}), encoding="utf-8")
-        temporary.replace(args.work / "progress.json")
+        write_progress(args.work, current, total)
 
     try:
         limits = ParseLimits.model_validate_json(args.options.read_bytes())

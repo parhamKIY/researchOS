@@ -1,6 +1,10 @@
+import json
+from pathlib import Path
+
 import pytest
 from pdf_fixtures import scientific_fixture
 
+from researchos.processing.child import write_progress
 from researchos.processing.contracts import ParseFailure, ParseLimits
 from researchos.processing.runner import parse_in_process
 
@@ -37,3 +41,30 @@ def test_lost_lease_stops_the_child_process(tmp_path):
     with pytest.raises(ParseFailure) as error:
         parse_in_process(source, tmp_path / "output", ParseLimits(), heartbeat=lambda *_: False)
     assert error.value.code == "lease_lost"
+
+
+def test_transient_progress_file_lock_does_not_fail_valid_extraction(tmp_path, monkeypatch):
+    original = Path.replace
+    attempts = []
+
+    def briefly_locked(path, target):
+        attempts.append(path)
+        if len(attempts) == 1:
+            raise PermissionError("Explicit Windows reader-lock fixture")
+        return original(path, target)
+
+    monkeypatch.setattr(Path, "replace", briefly_locked)
+    write_progress(tmp_path, 2, 2)
+    assert json.loads((tmp_path / "progress.json").read_text()) == {"current": 2, "total": 2}
+    assert len(attempts) == 2
+
+
+def test_locked_progress_preserves_last_known_count_without_false_completion(tmp_path, monkeypatch):
+    (tmp_path / "progress.json").write_text('{"current":1,"total":2}')
+
+    def locked(*_):
+        raise PermissionError("Explicit persistent reader-lock fixture")
+
+    monkeypatch.setattr(Path, "replace", locked)
+    write_progress(tmp_path, 2, 2)
+    assert json.loads((tmp_path / "progress.json").read_text()) == {"current": 1, "total": 2}
