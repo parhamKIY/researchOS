@@ -69,3 +69,17 @@ def mutation_identity(request: Request, identity: Authenticated) -> Identity:
 
 
 Mutation = Annotated[Identity, Depends(mutation_identity)]
+
+
+def admin_identity(identity: Authenticated) -> Identity:
+    if not identity.user.is_admin:
+        raise ApiError(403, "admin_required", "Administrator access is required")
+    return identity
+
+
+def admin_mutation(identity: Mutation) -> Identity:
+    return admin_identity(identity)
+
+
+Administrator = Annotated[Identity, Depends(admin_identity)]
+AdminMutation = Annotated[Identity, Depends(admin_mutation)]

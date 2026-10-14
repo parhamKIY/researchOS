@@ -36,7 +36,7 @@ def login_limit(request: Request):
 
 def session_read(user, session, token: str, request: Request):
     return {
-        "user": {"id": str(user.id), "email": user.email_normalized},
+        "user": {"id": str(user.id), "email": user.email_normalized, "is_admin": user.is_admin},
         "expires_at": session.expires_at.isoformat(),
         "csrf_token": csrf_token(
             token, request.app.state.settings.session_secret.get_secret_value()
