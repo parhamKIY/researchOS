@@ -9,6 +9,7 @@ from researchos.infrastructure.database import build_engine
 from researchos.infrastructure.storage import LocalFileStore
 from researchos.services.dispatch import dispatch_ready_jobs, recover_expired_jobs
 from researchos.services.maintenance import reconcile_storage
+from researchos.services.system_llm import recover_system_probes
 from researchos.tasks.celery_app import app
 
 
@@ -23,6 +24,7 @@ def main():
             try:
                 with Session(engine) as db:
                     recover_expired_jobs(db)
+                    recover_system_probes(db)
                     dispatch_ready_jobs(db, app)
                     if int(time.monotonic()) // 60 != last_sweep:
                         reconcile_storage(db, store)

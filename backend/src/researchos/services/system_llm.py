@@ -135,6 +135,34 @@ def check_admin_session(db, admin_id, session_id):
         raise ApiError(401, "unauthenticated", "Sign in to continue")
 
 
+def recover_system_probes(db):
+    """Erase keys from abandoned probes without touching the active configuration."""
+    now = datetime.now(UTC)
+    active = (
+        select(SystemLLMSettings.id)
+        .where(SystemLLMSettings.active_candidate_id == SystemProviderCandidate.id)
+        .exists()
+    )
+    rows = list(
+        db.scalars(
+            select(SystemProviderCandidate)
+            .where(
+                SystemProviderCandidate.state == "testing",
+                SystemProviderCandidate.created_at < now - timedelta(minutes=5),
+                ~active,
+            )
+            .order_by(SystemProviderCandidate.created_at)
+            .limit(100)
+            .with_for_update(skip_locked=True)
+        )
+    )
+    for row in rows:
+        row.state, row.error_code, row.encrypted_credential = "failed", "probe_interrupted", None
+        row.outcome_unknown, row.checked_at = True, now
+    db.commit()
+    return len(rows)
+
+
 async def verify_and_apply(
     db, admin_id, payload, match, settings, *, session_id=None, adapters=system_adapter
 ):
@@ -215,6 +243,8 @@ async def verify_and_apply(
     elapsed = max(0, int((time.monotonic() - started) * 1000))
     db.expire_all()
     candidate = db.get(SystemProviderCandidate, identifier)
+    if candidate.state != "testing":
+        error = ProviderFailure("probe_interrupted", outcome_unknown=True)
     candidate.checked_at = datetime.now(UTC)
     candidate.latency_ms = elapsed
     if result is not None and error is None:

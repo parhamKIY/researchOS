@@ -25,7 +25,12 @@ from researchos.domain.models import (
 )
 from researchos.providers.compatible import CompatibleProvider
 from researchos.providers.contracts import ProviderFailure, TextRequest, TextResponse, TokenUsage
-from researchos.services.system_llm import candidate_key, settings_read, verify_and_apply
+from researchos.services.system_llm import (
+    candidate_key,
+    recover_system_probes,
+    settings_read,
+    verify_and_apply,
+)
 from researchos.services.text_gateway import resolve_text_targets
 
 pytestmark = [
@@ -379,3 +384,38 @@ def test_network_timeout_never_applies_or_retries(admin_client):
     )
     assert not result["applied"] and result["check"]["outcome_unknown"] and adapter.calls == 1
     assert result["settings"]["active"]["id"] == before["active"]["id"]
+
+
+def test_abandoned_probe_cleanup_preserves_active_and_recent_probe(admin_client):
+    from datetime import UTC, datetime, timedelta
+
+    client, connection, headers, _ = admin_client
+    before = apply_mock(client, headers)["settings"]
+    with Session(connection, join_transaction_mode="create_savepoint") as db:
+        abandoned = SystemProviderCandidate(
+            adapter="gemini",
+            model_name="fixture",
+            execution_mode="live",
+            encrypted_credential="explicit-encrypted-fixture",
+            created_at=datetime.now(UTC) - timedelta(minutes=6),
+        )
+        recent = SystemProviderCandidate(
+            adapter="gemini",
+            model_name="recent",
+            execution_mode="live",
+            encrypted_credential="explicit-encrypted-fixture",
+        )
+        db.add_all([abandoned, recent])
+        db.commit()
+        assert recover_system_probes(db) == 1
+        assert (
+            abandoned.state == "failed"
+            and abandoned.outcome_unknown
+            and abandoned.encrypted_credential is None
+        )
+        assert recent.state == "testing" and recent.encrypted_credential
+        current = db.get(SystemLLMSettings, 1)
+        assert (
+            str(current.active_candidate_id) == before["active"]["id"]
+            and current.revision == before["revision"]
+        )
