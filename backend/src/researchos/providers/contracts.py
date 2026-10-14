@@ -12,7 +12,7 @@ class GenerationParameters(BaseModel):
 
 class TextRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    model_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
+    model_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
     prompt: str = Field(min_length=1, max_length=50000, repr=False)
     parameters: GenerationParameters = Field(default_factory=GenerationParameters)
 

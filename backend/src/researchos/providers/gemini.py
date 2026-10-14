@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 
 import httpx
 from pydantic import SecretStr
@@ -14,6 +15,8 @@ class GeminiProvider:
         self._transport = transport
 
     async def generate_text(self, request: TextRequest, key: SecretStr | None) -> TextResponse:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}", request.model_name):
+            raise ProviderFailure("model_unavailable")
         if key is None:
             raise ProviderFailure("credential_unavailable")
         config = {"maxOutputTokens": request.parameters.max_output_tokens or 1024}
