@@ -16,7 +16,10 @@ from researchos.services.providers import lock_owner, usable_model
 
 
 def adapter_for(name):
-    return GeminiProvider() if name == "gemini" else MockProvider()
+    adapters = {"gemini": GeminiProvider, "mock": MockProvider}
+    if name not in adapters:
+        raise ProviderFailure("provider_unsupported")
+    return adapters[name]()
 
 
 async def test_connection(db, owner, provider_id, model_id, settings, adapters=adapter_for):

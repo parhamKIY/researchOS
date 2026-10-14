@@ -28,7 +28,11 @@ TASK_CAPABILITIES = {
 
 
 def lock_owner(db, owner):
-    db.scalar(select(User.id).where(User.id == owner, User.is_active.is_(True)).with_for_update())
+    active = db.scalar(
+        select(User.id).where(User.id == owner, User.is_active.is_(True)).with_for_update()
+    )
+    if active is None:
+        raise ApiError(401, "unauthenticated", "Sign in to continue")
 
 
 def owned_provider(db, owner, identifier, lock=False):

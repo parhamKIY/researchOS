@@ -8,6 +8,7 @@ from pydantic import SecretStr
 from researchos.providers.contracts import ProviderFailure, TextRequest
 from researchos.providers.gemini import GeminiProvider
 from researchos.providers.mock import MockProvider
+from researchos.services.provider_testing import adapter_for
 
 REQUEST = TextRequest(
     model_name="explicit-gemini-test-model", prompt="Disposable connection fixture"
@@ -94,3 +95,9 @@ def test_missing_usage_remains_unknown_and_mock_is_labeled():
     result = asyncio.run(GeminiProvider(server).generate_text(REQUEST, KEY))
     assert result.usage.total_tokens is None
     assert asyncio.run(MockProvider().generate_text(REQUEST, None)).execution_mode == "mock"
+
+
+def test_unknown_adapter_never_silently_uses_mock():
+    with pytest.raises(ProviderFailure) as error:
+        adapter_for("unsupported-fixture")
+    assert error.value.code == "provider_unsupported"

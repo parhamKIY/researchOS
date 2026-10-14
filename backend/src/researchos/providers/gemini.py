@@ -61,7 +61,13 @@ class GeminiProvider:
                         body.extend(chunk)
         except (httpx.ConnectError, httpx.ConnectTimeout):
             raise ProviderFailure("provider_connection_failed", retryable=True) from None
-        except (TimeoutError, httpx.TimeoutException, httpx.NetworkError, httpx.ProtocolError):
+        except (
+            TimeoutError,
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.ProtocolError,
+            httpx.DecodingError,
+        ):
             raise ProviderFailure("provider_outcome_unknown", outcome_unknown=True) from None
         try:
             decoded = json.loads(body)
