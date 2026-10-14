@@ -20,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-SCHEMA_REVISION = "0004_ingestion"
+SCHEMA_REVISION = "0005_providers"
 
 
 class Base(DeclarativeBase):
@@ -382,3 +382,141 @@ class ProcessingJob(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProviderConnection(Base):
+    __tablename__ = "provider_connections"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "id"),
+        CheckConstraint("adapter IN ('gemini','mock')", name="valid_adapter"),
+        CheckConstraint("revision > 0 AND credential_revision > 0", name="positive_revisions"),
+        CheckConstraint("length(trim(display_name)) > 0", name="nonempty_name"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    adapter: Mapped[str] = mapped_column(String(32))
+    display_name: Mapped[str] = mapped_column(String(100))
+    encrypted_credential: Mapped[str | None] = mapped_column(Text)
+    credential_revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ModelConfiguration(Base):
+    __tablename__ = "model_configurations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "provider_id"],
+            ["provider_connections.owner_id", "provider_connections.id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("owner_id", "id"),
+        UniqueConstraint(
+            "owner_id", "provider_id", "id", name="uq_model_configurations_owner_provider_id"
+        ),
+        UniqueConstraint(
+            "owner_id",
+            "provider_id",
+            "model_name",
+            name="uq_model_configurations_owner_provider_name",
+        ),
+        CheckConstraint("revision > 0", name="positive_revision"),
+        CheckConstraint("capability_source = 'manual'", name="manual_capabilities"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column()
+    provider_id: Mapped[uuid.UUID] = mapped_column()
+    model_name: Mapped[str] = mapped_column(String(200))
+    capabilities: Mapped[list] = mapped_column(JSONB)
+    capability_source: Mapped[str] = mapped_column(
+        String(32), default="manual", server_default="manual"
+    )
+    parameters: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ModelRoutingSettings(Base):
+    __tablename__ = "model_routing_settings"
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def id(self):
+        return self.owner_id
+
+
+class ModelRoutingRule(Base):
+    __tablename__ = "model_routing_rules"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "primary_model_id"],
+            ["model_configurations.owner_id", "model_configurations.id"],
+            name="fk_routing_primary_model",
+        ),
+        ForeignKeyConstraint(
+            ["owner_id", "fallback_model_id"],
+            ["model_configurations.owner_id", "model_configurations.id"],
+            name="fk_routing_fallback_model",
+        ),
+        CheckConstraint(
+            "fallback_model_id IS NULL OR fallback_model_id <> primary_model_id",
+            name="distinct_fallback",
+        ),
+    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_routing_settings.owner_id", ondelete="CASCADE"), primary_key=True
+    )
+    task: Mapped[str] = mapped_column(String(64), primary_key=True)
+    primary_model_id: Mapped[uuid.UUID] = mapped_column()
+    fallback_model_id: Mapped[uuid.UUID | None] = mapped_column()
+    allowed_provider_ids: Mapped[list] = mapped_column(JSONB)
+
+
+class AIUsageRecord(Base):
+    __tablename__ = "ai_usage_records"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "provider_id", "model_configuration_id"],
+            [
+                "model_configurations.owner_id",
+                "model_configurations.provider_id",
+                "model_configurations.id",
+            ],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "state IN ('started','completed','failed','outcome_unknown')", name="valid_state"
+        ),
+        CheckConstraint("attempt > 0", name="positive_attempt"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column()
+    provider_id: Mapped[uuid.UUID] = mapped_column()
+    model_configuration_id: Mapped[uuid.UUID] = mapped_column()
+    provider_name: Mapped[str] = mapped_column(String(100))
+    model_name: Mapped[str] = mapped_column(String(200))
+    execution_mode: Mapped[str] = mapped_column(String(16))
+    task: Mapped[str] = mapped_column(String(64))
+    attempt: Mapped[int] = mapped_column(Integer)
+    state: Mapped[str] = mapped_column(String(32), default="started")
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    thought_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    cost_amount: Mapped[float | None] = mapped_column(Float)
+    currency: Mapped[str | None] = mapped_column(String(8))
+    cost_source: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
