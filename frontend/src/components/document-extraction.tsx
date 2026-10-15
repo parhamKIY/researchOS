@@ -13,8 +13,8 @@ type Span = { page_number: number; start_offset: number; end_offset: number };
 type Section = { id: string; heading: string | null; kind: string; spans: Span[] };
 type Figure = { id: string; file_url: string; page_number: number; caption: string | null; caption_start: number | null; caption_end: number | null; bounding_box: number[] | null };
 
-export function DocumentExtraction({ paperId, jobId, session, expired, changed, sourcePage }: {
-  paperId: string; jobId: string | null; session: Session; expired: () => void; changed: () => void; sourcePage: (number: number) => void;
+export function DocumentExtraction({ paperId, paperRevision, jobId, session, expired, changed, sourcePage }: {
+  paperId: string; paperRevision: number; jobId: string | null; session: Session; expired: () => void; changed: () => void; sourcePage: (number: number) => void;
 }) {
   const [job, setJob] = useState<Job | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
@@ -120,7 +120,7 @@ export function DocumentExtraction({ paperId, jobId, session, expired, changed, 
     {error && <p role="alert" className="error-message">{error}</p>}
     {job && <div role="status"><p>{job.state.replaceAll("_", " ")} · {job.progress_percent}%{active && job.stage ? ` · ${job.stage.replaceAll("_", " ")}` : ""}</p>{active && <progress max={100} value={job.progress_percent} aria-label="Extraction progress" />}{job.state === "failed" && job.error && <p className="error-message">Extraction failed: {job.error.code.replaceAll("_", " ")}. The original PDF is available.</p>}</div>}
     <p className="muted">Extraction runs locally. Scanned pages need OCR, which is not available yet. Reading order, section labels and caption associations require inspection. Vector figures and structured tables are not extracted.</p>
-    {selected && <AnalysisPanel key={`${paperId}:${selected}`} paperId={paperId} versionId={selected} ready={!!version && ["ready", "partially_ready"].includes(version.state)} session={session} expired={expired} sourcePage={sourcePage} />}
+    {selected && <AnalysisPanel key={`${paperId}:${selected}`} paperId={paperId} paperRevision={paperRevision} versionId={selected} ready={!!version && ["ready", "partially_ready"].includes(version.state)} session={session} expired={expired} sourcePage={sourcePage} changed={changed} />}
     {versions.length > 0 && <label>Extraction history<select aria-label="Extraction history" value={selected} onChange={(event) => { setSelected(event.target.value); setPageNumber(1); setPage(null); setSpan(null); setSections([]); setFigures([]); }}>
       {versions.map((item) => <option key={item.id} value={item.id}>{new Date(item.created_at).toLocaleString()} · {item.state.replaceAll("_", " ")}</option>)}
     </select></label>}

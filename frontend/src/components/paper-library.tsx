@@ -142,7 +142,7 @@ export function PaperLibrary({ session, expired, project }: { session: Session; 
         <button className="refresh-button" onClick={() => setDeleting(true)} disabled={busy}>Delete paper</button></div>
       {deleting && <div className="delete-confirm"><p>Delete this paper and its original file from every project?</p><button className="danger-button" onClick={remove} disabled={busy}>Confirm paper deletion</button><button onClick={() => setDeleting(false)} disabled={busy}>Cancel</button></div>}
       <div className="document-workspace"><PdfViewer key={selected.id} paperId={selected.id} requestedPage={requestedPage} />
-      <DocumentExtraction key={selected.id} paperId={selected.id} jobId={selected.latest_ingestion_job_id} session={session} expired={expired} changed={changed} sourcePage={sourcePage} /></div>
+      <DocumentExtraction key={selected.id} paperId={selected.id} paperRevision={selected.revision} jobId={selected.latest_ingestion_job_id} session={session} expired={expired} changed={changed} sourcePage={sourcePage} /></div>
       <p className="muted">If your browser cannot preview this document, download the original PDF.</p>
     </section>}
   </section>;

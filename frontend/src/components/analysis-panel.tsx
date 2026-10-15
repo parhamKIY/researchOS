@@ -8,7 +8,7 @@ import { evidenceParts } from "@/lib/evidence";
 type ReportPage = { items: Report[]; next_cursor: string | null };
 type PaperPrivacy = { id: string; revision: number; external_processing_allowed: boolean };
 
-export function AnalysisPanel({ paperId, versionId, ready, session, expired, sourcePage }: { paperId: string; versionId: string; ready: boolean; session: Session; expired: () => void; sourcePage: (page: number) => void }) {
+export function AnalysisPanel({ paperId, paperRevision, versionId, ready, session, expired, sourcePage, changed }: { paperId: string; paperRevision: number; versionId: string; ready: boolean; session: Session; expired: () => void; sourcePage: (page: number) => void; changed: () => void }) {
   const [history, setHistory] = useState<Report[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState("");
@@ -36,7 +36,7 @@ export function AnalysisPanel({ paperId, versionId, ready, session, expired, sou
       .then(([page, paper]) => { if (alive) { setHistory(page.items); setCursor(page.next_cursor); setPrivacy(paper); setSelected((previous) => previous || page.items[0]?.id || ""); } })
       .catch((err) => { if (alive) failure(err); });
     return () => { alive = false; };
-  }, [paperId, refresh, failure]);
+  }, [paperId, paperRevision, refresh, failure]);
 
   useEffect(() => {
     if (!selected) return;
@@ -66,6 +66,7 @@ export function AnalysisPanel({ paperId, versionId, ready, session, expired, sou
     setBusy(true); setError(""); setPlan(null); setApproved(false); pending.current = null;
     try {
       setPrivacy(await api<PaperPrivacy>(`/papers/${paperId}`, { method: "PATCH", headers: { "If-Match": `"${privacy.id}:${privacy.revision}"` }, body: JSON.stringify({ external_processing_allowed: allow }) }, session.csrf_token));
+      changed();
     } catch (err) { failure(err); }
     finally { setBusy(false); }
   }
