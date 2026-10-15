@@ -27,6 +27,9 @@ class TextTarget:
     parameters: GenerationParameters
     adapter: TextProvider = field(repr=False)
     key: SecretStr | None = field(repr=False)
+    adapter_name: str = "mock"
+    base_url: str | None = None
+    revision_signature: str = ""
 
 
 def resolve_text_targets(db, owner, task, settings) -> list[TextTarget]:
@@ -58,6 +61,11 @@ def resolve_text_targets(db, owner, task, settings) -> list[TextTarget]:
                     GenerationParameters.model_validate(model.parameters),
                     adapter_for(provider.adapter),
                     key,
+                    provider.adapter,
+                    "https://generativelanguage.googleapis.com/v1beta"
+                    if provider.adapter == "gemini"
+                    else None,
+                    f"{model.revision}:{provider.revision}:{provider.credential_revision}",
                 )
             )
         return targets
@@ -82,5 +90,8 @@ def resolve_text_targets(db, owner, task, settings) -> list[TextTarget]:
             GenerationParameters.model_validate(active.parameters),
             system_adapter(active),
             candidate_key(active, settings),
+            active.adapter,
+            active.base_url,
+            str(active.id),
         )
     ]

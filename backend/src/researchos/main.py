@@ -11,6 +11,7 @@ from sqlalchemy.exc import OperationalError
 from starlette.exceptions import HTTPException
 
 from researchos.api.admin import router as admin_router
+from researchos.api.analysis import router as analysis_router
 from researchos.api.auth import router as auth_router
 from researchos.api.documents import router as documents_router
 from researchos.api.errors import ApiError
@@ -137,4 +138,5 @@ def create_app(settings: Settings | None = None, probe: HealthProbe | None = Non
     app.include_router(documents_router)
     app.include_router(providers_router)
     app.include_router(admin_router)
+    app.include_router(analysis_router)
     return app
