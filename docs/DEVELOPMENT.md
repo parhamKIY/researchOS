@@ -32,7 +32,7 @@ Rerun `python scripts/bootstrap_env.py` on an existing checkout before rebuildin
 
 After signing in, open AI providers & models. Add Google Gemini and enter the key only in the password field; the saved response contains no key characters. Add the exact model ID from your Google account and manually declare its capabilities. Test a text model explicitly with Test Gemini connection; the UI states that a fixed message will be sent and quota/cost may be incurred. The test output limit is 256, not a guaranteed billing ceiling. No paper is transmitted. Raw provider responses and credentials are not recorded in usage.
 
-For local verification, choose Mock and an arbitrary valid model ID such as `fixture-model`. Results are labeled MOCK and counts are synthetic. Under Default models by task, choose primary/optional fallback models and save routes. Changes affect subsequent connectivity tests immediately. Automatic document analysis/fallback execution is next-stage work. Vision/embedding settings do not imply their execution has been implemented or verified.
+For local verification, choose Mock and a valid model ID such as `fixture-model`. Results are labeled MOCK and usage is synthetic. Under Default models by task, choose primary/optional fallback models and save routes. Stage 5 uses paper_summary, methodology and research_gaps; each run reviews the exact destinations. Vision/embedding settings do not imply their execution is implemented or verified.
 
 Provider key replacement and local removal are under Provider settings. Deleting a provider disables its connection and removes its stored key while retaining usage history; revoke the external key through Google separately if wanted. The same settings section shows safe usage with unknown costs/counts preserved.
 
@@ -153,7 +153,7 @@ Sign in at `http://localhost:3000/admin`. Choose the protocol, API base URL and 
 
 Custom URLs must be public HTTPS on port 443. Internal/self-hosted private-network endpoints and redirecting endpoints are not supported. Enter the API base (for example `/v1` or `/api/v1`), not the full `/chat/completions` path. Compatible providers must support Chat Completions and `max_completion_tokens`; protocol or parameter mismatches fail before activation. Gemini uses its official fixed endpoint.
 
-Keys remain encrypted on the server using the existing master key; never rotate or delete that master key to change a provider key. Blank key input reuses the current key only for the identical protocol and normalized URL. Previously active, failed and abandoned candidates do not retain usable keys. Personal routes remain explicit overrides; paper analysis is still a future milestone.
+Keys remain encrypted on the server using the existing master key; never rotate or delete that master key to change a provider key. Blank key input reuses the current key only for the identical protocol and normalized URL. Previously active, failed and abandoned candidates do not retain usable keys. Personal routes remain explicit overrides; stage 5 separately enforces document privacy and exact destination approval.
 
 Detailed scope and local evidence: [administrator checkpoint](ADMIN_PANEL.md).
 
@@ -186,6 +186,19 @@ Development workflow: commit each verified checkpoint immediately; make one push
 Implemented and checked locally: login/logout/session invalidation, project lifecycle and ownership, paper storage/replay/deduplication, metadata revisions, project-filtered search, private file ranges, deletion retries and abandoned-file reconciliation. The browser workflow used a disposable local account and a synthetic PDF; the project and original remained available after rebuilding/recreating the application containers. PDF.js successfully displayed the stored page. A separate HTTP integration check used the actual frontend proxy and concurrent 11 MiB uploads and verified one reused paper.
 
 Execution totals and current limitations are recorded in [the stage 2 checkpoint](MILESTONE_02.md). Remote GitHub Actions execution and real AI providers are not included in local verification.
+
+## Stage 5 acceptance
+
+The complete frontend proxy → PDF ingestion → plan/consent → Celery → per-section validation/publication → evidence/history path was checked with synthetic documents and an explicit Mock provider in both languages. Duplicate queue delivery produced seven attempts per report. Saved reports survived actual API/worker/maintenance/frontend container recreation; isolated runtime accounts/uploads were then cleaned. This does not establish real-provider or scientific quality. Browser visual verification of the new panel remains pending.
+
+Account setup and a short manual test are in [the stage 5 guide](MILESTONE_05.md). Run integration checks against the latest built images:
+
+```powershell
+docker compose --profile test build tests
+docker compose --profile test run --rm --no-deps tests
+```
+
+The analysis report is its own durable job; `/jobs/{id}` remains ingestion-only. Analysis usage is returned with the owned report; the original usage dashboard lists connection-test attempts. Unknown costs are not inferred from token counts. No README update is included.
 
 ## Network diagnostics
 

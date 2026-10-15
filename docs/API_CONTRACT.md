@@ -1,16 +1,16 @@
 # Initial REST API contract
 
-Status: version 0.5. Identity, projects/library/extraction, personal provider/model/routing/usage and administration endpoints are implemented. Analysis endpoints remain planned. Typed runtime documentation is available at `/api/docs`; later report fields below are not all implemented.
+Status: version 0.6. Private library/extraction, provider settings, administration and stage 5 analysis endpoints are implemented. Chat, retrieval and external literature discovery remain planned. The implemented boundaries below take precedence over broader design sketches. Real-provider analysis and scientific quality have not been verified.
 
 ## Implemented stage 4 boundary
 
 - Personal provider CRUD, model CRUD, routing GET/PUT and provider connection tests follow the routes listed below. All require session ownership, with CSRF on mutations and ETags on edits/deletes/routing replacement. Lists have signed cursors and limits 1–100, default 20. Unknown fields, arbitrary endpoints on personal connections, invalid model IDs and forged capability-source fields are rejected. Administrator-managed endpoints are described separately below.
 - Supported adapters are `gemini` and `mock`. Provider creation requires a write-only `api_key` for Gemini and forbids it for mock. PATCH adds `clear_credential: true` for removing the saved key; key replacement and clearing cannot occur together. DELETE disables the connection, clears ciphertext and hides it from reads, retaining model/usage history. It does not revoke the external Google key.
 - Model IDs match `[A-Za-z0-9][A-Za-z0-9._-]{0,199}`. Capabilities are a nonempty unique subset of `text`, `vision`, `embeddings`, always marked `manual`. Parameters currently allow only optional temperature 0–2 and integer max output tokens 16–8192. Model DELETE disables rather than deleting history; PATCH can reenable.
-- Routing tasks are `paper_summary`, `methodology`, `research_gaps`, `paper_chat`, `figure_analysis`, `embeddings`. PUT atomically replaces up to six rules; model/provider ownership, enablement, declared capability and exact allowed provider set are checked. A stale aggregate ETag returns 412. Configured fallback execution belongs to the later analysis gateway.
+- Routing tasks are `paper_summary`, `methodology`, `research_gaps`, `paper_chat`, `figure_analysis`, `embeddings`. PUT atomically replaces up to six rules; model/provider ownership, enablement, declared capability and exact allowed provider set are checked. A stale aggregate ETag returns 412. Stage 5 executes approved text fallbacks only after definite request failures; ambiguous outcomes are not automatically replayed.
 - `POST /providers/{id}/test` takes `{model_configuration_id}` and tests a text-capable configuration from that exact provider. It sends only a fixed connection message and may consume quota/cost. Expected provider errors return HTTP 200 with `status: failed`, a safe code, mode, checked time, usage IDs and an outcome-unknown flag; local auth/ownership/validation/configuration errors retain standard HTTP errors. Tests are limited to ten recorded attempts/minute per owner before starting a new test; a bounded retry may add a second attempt. Vision and embedding declarations are not verified by this probe.
 - `GET /analytics/usage` lists owner-private attempt records: safe names/IDs, task, mode, state, attempt, available input/output/thought/total token counts, latency, nullable cost/currency/source and timestamp. No prompt, output, credential or encrypted value is returned. Mock counts are synthetic. Gemini billing cost is not inferred from token counts.
-- The settings UI can change saved models and parameters without restarting the backend. Complete paper reports, provider model discovery, server encryption-key rotation and spending limits are not implemented in this stage.
+- The settings UI changes saved models and parameters without restarting the backend. Stage 5 paper reports are described below. Provider model discovery, server encryption-key rotation and spending limits remain unimplemented.
 All resource routes below are relative to `/api/v1`.
 Related: [architecture](ARCHITECTURE.md), [data model](DATA_MODEL.md).
 
@@ -29,7 +29,28 @@ Routes are relative to `/api/v1`. Session responses include `user.is_admin`; eve
 
 Admin adapters: `gemini`, `openai_compatible`, `mock`. Gemini accepts only its official HTTPS base. Compatible providers require a public HTTPS base on port 443 without credentials/query/fragment/literal IP; the server appends `/chat/completions`. Compatible model IDs may include `/` and `:`; Gemini keeps its stricter pattern. Keys contain visible ASCII and are write-only. An omitted key is reused only for identical protocol and normalized base. Mock accepts no URL/key.
 
-Probes send one fixed public message, capped at 256 output tokens with bounded time. Admin probes do not retry, follow redirects or use environment proxies. Ten new checks/minute system-wide are allowed, including pending checks. Missing ETag returns 428; stale ETag before/after the test returns 412. Role and session are rechecked before activation. Failed/stale/superseded keys are erased; interrupted probes recover after five minutes. Explicit personal text routes take precedence over the verified system default; an invalid private route never silently falls back. Paper analysis and document-consent enforcement remain stage 5 work.
+Probes send one fixed public message, capped at 256 output tokens with bounded time. Admin probes do not retry, follow redirects or use environment proxies. Ten new checks/minute system-wide are allowed, including pending checks. Missing ETag returns 428; stale ETag before/after the test returns 412. Role and session are rechecked before activation. Failed/stale/superseded keys are erased; interrupted probes recover after five minutes. Explicit personal text routes take precedence over the verified system default; an invalid private route never silently falls back. Stage 5 separately enforces paper privacy and exact destination approval.
+
+## Implemented stage 5 analysis boundary
+
+| Route | Behavior |
+|---|---|
+| `GET /papers/{id}/analysis-plan?document_version_id=...&language=fa` | Owned usable extraction; language `fa`/`en`. Returns fingerprint, safe snapshots of exact primary/fallback destinations, external-processing requirements and context coverage. No keys or raw prompts. |
+| `POST /papers/{id}/analyses` | CSRF/origin and `Idempotency-Key`; `AnalysisCreate` below. 202 `{id, state: queued, paper_id}` and Location `/api/v1/analyses/{id}`. |
+| `GET /papers/{id}/analyses` | Owned history; signed cursor, default limit 20/max 100. Snapshots, state/progress, language, lineage, timestamps. |
+| `GET /analyses/{id}` | Owned report plus sections, validated claims/inline evidence, actual per-section generation identity and usage attempts. Private/no-store. |
+
+Creation requires `document_version_id`, `language`, `plan_fingerprint`, `approved_configuration_ids` matching every reviewed destination. Live targets additionally require `acknowledge_external_processing: true` and `Paper.external_processing_allowed=true`. A stale plan returns 412, foreign IDs 404, destination mismatch 422, private-paper denial 403. One active analysis per paper is enforced in the database; 12 new reports/owner/hour. Idempotency replays for 24 hours before checking current configuration; conflicting payloads return 409.
+
+Optional `retry_of_id` links a failed/partial report on the same owned paper. An uncertain previous outcome requires `acknowledge_unknown_outcome: true` (otherwise 409). Retry creates a full new report, reruns all seven sections and preserves history; there is no analysis retry through `/jobs/{id}/retry`.
+
+Report sections: `overview`, `methodology`, `results`, `limitations`, `future_work`, `research_gaps`, `resources`. Section states: `completed`, `unavailable`, `failed`; unavailable output requires a reason. Claim kinds: `author_claim`, `supported_interpretation`, `ai_suggestion`. Quotes must match supplied Unicode code-point spans exactly. Published witnesses include page ID/number, extraction version via the report, section IDs and absolute page offsets. Numeric result fields must occur in quoted evidence, as must numbers in factual prose and URLs. Resource URLs are document-extracted and unverified; no external links are fetched. Research proposals have explicit motivation/approach/uncertainty and nullable proposed data/models/evaluation, implementation strategy, estimated difficulty/compute and contribution. Suggestions cannot be classified as verified findings or novelty assessments.
+
+Context is bounded to 24,000 extracted characters; long documents use evenly distributed chunks with `sampled_extracted_text` disclosure. This is not full-document retrieval. Exact evidence validates location, not semantic entailment or scientific accuracy. Parser warnings and context coverage are saved with model/parameter, prompt/schema version, language and explicit consent snapshots.
+
+Generation policy `analysis-v1` uses 4096 output tokens when the saved model omits an explicit limit; configured limits remain unchanged. An omitted temperature uses the provider's default, whose numeric value is unknown. The snapshot records configured parameters and the policy version; it does not claim provider-internal sampling settings are known.
+
+The report itself is the durable analysis job (separate from ingestion jobs). Maintenance dispatches queued work; workers claim fenced leases, record attempts before provider I/O, revalidate settings/privacy and publish each validated section independently. A pending paid attempt after worker loss becomes `outcome_unknown`; expired analysis work is never automatically requeued. At most one approved fallback executes for definite rejection/rate/connection errors, never for ambiguous outcomes or invalid model output. Partial results survive failures. Active analysis blocks paper deletion. Usage is available inside the report; missing tokens/cost remain unknown and mock usage is synthetic. Scientific verification remains `not_evaluated` for all reports until separate evaluation exists.
 
 ## Implemented stage 2 boundary
 
@@ -90,12 +111,12 @@ Example error (illustrative):
 | `GET /papers/{paper_id}/document-versions` | Pagination | 200 version metadata including parse state/warnings |
 | `GET /papers/{paper_id}/figures` | `document_version_id`, pagination | 200 paginated `FigureRead` |
 | `GET /figures/{figure_id}/file` | Owned figure | 200 private image; safe content type and no-store |
-| `POST /papers/{paper_id}/analyses` | `AnalysisCreate`, idempotency key | 202 `JobRead` + Location; 409 if not parsed or equivalent active work; 403 if external processing forbidden |
+| `POST /papers/{paper_id}/analyses` | `AnalysisCreate`, idempotency key | 202 `{id,state,paper_id}` + report Location; current stage 5 boundary above |
 | `GET /jobs/{job_id}` | Owned ID | 200 `JobRead`; initial UI polls with bounded backoff |
-| `POST /jobs/{job_id}/retry` | `RetryRequest`, idempotency key | 202 new `JobRead`; 409 if state not retryable; 422 if unknown-outcome acknowledgment missing |
+| `POST /jobs/{job_id}/retry` | Empty JSON and idempotency key | Ingestion only; analysis retries create a new report using `retry_of_id` |
 | `GET /papers/{paper_id}/analyses` | Pagination | 200 paginated `AnalysisSummary` |
 | `GET /analyses/{analysis_id}` | Owned ID | 200 `AnalysisRead`, immutable saved report |
-| `GET /evidence/{evidence_id}` | Owned ID | 200 `EvidenceRead`; source file route and page reference |
+| `GET /evidence/{evidence_id}` | Planned separate evidence resource | Not implemented; current reports embed validated witnesses and use owned version/page reads |
 | `POST /providers` | `ProviderCreate` | 201 `ProviderRead` + Location + ETag; validate supported adapter |
 | `GET /providers` | Pagination | 200 paginated `ProviderRead` |
 | `GET /providers/{provider_id}` | Owned ID | 200 `ProviderRead` + ETag |
@@ -128,14 +149,14 @@ Fields are required unless marked `?`. Nullable is stated explicitly. Read objec
 | `UploadRead` | `paper: PaperRead`, `duplicate: bool`, nullable `ingestion_job: JobRead`; null when no active ingestion exists on reused paper |
 | `DocumentVersionRead` | `id`, `paper_id`, `state`, parser name/version/config, unverified `metadata`, `warnings`, `page_count`, `figure_count`, `created_at`, nullable `completed_at` |
 | `FigureRead` | `id`, `paper_id`, `document_version_id`, `page_number`, nullable caption and bounding box, `file_url` (owned relative API route), `extraction_method` |
-| `AnalysisCreate` | `document_version_id: UUID`, `model_configuration_id?: UUID`, `language` (enum: `en`, `fa`), `parameters?: object` validated against provider/model, `consent_provider_ids: UUID[]` matching the resolved provider/fallbacks |
-| `RetryRequest` | `acknowledge_possible_duplicate_cost?: bool` (default false); unchanged snapshot must still be valid or submit a new analysis instead |
-| `JobRead` | `id`, `paper_id`, nullable `document_version_id`, `kind`, `state`, nullable `stage`, `progress_percent`, `attempt`, nullable `retry_of_job_id`, nullable `analysis_id`, sanitized nullable `error`, nullable `retry_requirement`, timestamps |
-| `AnalysisSummary` | `id`, `paper_id`, `document_version_id`, `state`, `language`, `execution_mode` (enum: `live`, `mock`), safe model/provider names, `created_at` |
-| `AnalysisRead` | `AnalysisSummary` fields + safe `configuration_snapshot`, `schema_version`, `sections: ReportSectionRead[]` |
-| `ReportSectionRead` | `kind`, `status` (enum: `available`, `unavailable`, `failed`), nullable `reason_code`, validated `payload`, `claims: ClaimRead[]` |
-| `ClaimRead` | `id`, `text`, `claim_kind` (enum: `source_statement`, `supported_inference`, `ai_suggestion`), nullable `confidence_note`, `evidence_ids: UUID[]` |
-| `EvidenceRead` | `id`, `paper_id`, `document_version_id`, `page_number`, nullable `section_heading`, `start_offset`, `end_offset`, `quote`, `source_file_url` |
+| `AnalysisCreate` | `document_version_id: UUID`, `language: en/fa`, `plan_fingerprint: sha256`, `approved_configuration_ids: UUID[1..6]`, `acknowledge_external_processing?: bool`, `retry_of_id?: UUID`, `acknowledge_unknown_outcome?: bool`; extra fields rejected |
+| `RetryRequest` | Ingestion uses empty JSON; analysis retries use the complete `AnalysisCreate` with `retry_of_id` and optional uncertainty acknowledgment |
+| `JobRead` | Ingestion ID, paper/version IDs, kind/state/stage, progress_percent, attempt, retry_of_job_id, safe error and timestamps |
+| `AnalysisSummary` | Report/paper/version/parent IDs, state, language, progress/stage, safe error, outcome_unknown, created/finished times, frozen `configuration`, `scientific_verification: not_evaluated` |
+| `AnalysisRead` | `AnalysisSummary` plus `sections` and safe per-request `usage` |
+| `ReportSectionRead` | `kind`, `state: completed/unavailable/failed`, `error_code`, nullable validated `payload` containing items/unavailable_reason and actual server-attached generation identity |
+| `ClaimRead` | Inline `kind: author_claim/supported_interpretation/ai_suggestion`, topic, text, exact evidence, nullable structured result/resource/research proposal |
+| `EvidenceRead` | Inline chunk reference and relative start/end, quote, page_id/page_number, absolute start_offset/end_offset and section_ids; extraction version belongs to report |
 | `ProviderCreate` | `adapter: supported identifier`, `display_name: string[1..100]`, `api_key: write-only string` (not needed for mock) |
 | `ProviderPatch` | At least one of `display_name`, `api_key` (replacement), `enabled: bool` |
 | `ProviderRead` | `id`, `adapter`, `display_name`, `credential_configured: bool`, fixed nullable `credential_display: string` (no key characters), `enabled`, `revision`, timestamps |

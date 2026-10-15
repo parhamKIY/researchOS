@@ -1,6 +1,6 @@
 # Architecture decisions — initial release
 
-Status: foundation, private library, versioned extraction and provider/model/routing settings are implemented. Gemini's text adapter and a labeled local mock are available. Paper analysis and successful live-provider verification remain pending. See [development instructions](DEVELOPMENT.md).
+Status: foundation, private library, versioned extraction, provider settings, administration and stage 5 evidence-linked analysis are implemented. The complete workflow is verified with a labeled mock. Successful real-provider analysis and scientific quality evaluation remain pending. See [development instructions](DEVELOPMENT.md) and [stage 5 evidence/limits](MILESTONE_05.md).
 Related contracts: [data model](DATA_MODEL.md), [API](API_CONTRACT.md), [roadmap](ROADMAP.md).
 
 ## Release boundary
@@ -156,11 +156,21 @@ Contract sources: [Gemini generateContent](https://ai.google.dev/api/generate-co
 
 The `/admin` panel manages account status and the global default text provider. Administrator dependencies check the live stored role; CSRF/origin and revision checks guard mutations. Initial roles use `create-admin` / `grant-admin` CLI commands. Counts and account status do not grant access to another user's private papers or keys.
 
-System candidates are encrypted under a separate authenticated context. The application commits a pending candidate before external I/O without changing the active pointer. A successful bounded text probe rechecks role/session and compares the global revision before atomic activation. Failures/stale tests retain the active configuration and erase candidate keys. Superseded keys are also erased; maintenance recovers pending probes older than five minutes. The text resolver prefers explicit personal routes and otherwise snapshots the active system default. Future analysis must separately implement document consent and usage accounting.
+System candidates are encrypted under a separate authenticated context. The application commits a pending candidate before external I/O without changing the active pointer. A successful bounded text probe rechecks role/session and compares the global revision before atomic activation. Failures/stale tests retain the active configuration and erase candidate keys. Superseded keys are also erased; maintenance recovers pending probes older than five minutes. The text resolver prefers explicit personal routes and otherwise snapshots the active system default. Stage 5 separately implements document consent and per-report usage accounting.
 
 The compatible adapter uses Chat Completions with a configurable public HTTPS API base. It rejects private/mixed DNS answers and pins the validated IP at TCP connect while retaining hostname verification/SNI. Redirects and environment proxies are disabled. Gemini keeps its official fixed endpoint; mock remains explicitly local. API key reuse is limited to the identical protocol and endpoint, and admin probes never retry automatically. Test/verification details are in [the admin checkpoint](ADMIN_PANEL.md).
 
 Protocol references: [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create), [HTTPX transports](https://www.python-httpx.org/advanced/transports/), [HTTPCore network backends](https://www.encode.io/httpcore/network-backends/), [SSRF prevention](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).
+
+## Implemented stage 5 analysis boundary
+
+Analysis uses a separate `AnalysisReport` durable state machine and section/attempt tables. Plans fingerprint extraction/context, language, prompt/schema versions and exact model/provider revisions. One active report per owned paper, owner-scoped idempotency and hourly limits guard creation. External calls require both paper privacy permission and explicit approval of every reviewed primary/fallback configuration.
+
+Context consists of bounded page chunks with stable page/section/code-point references. Long inputs use declared sampling, not hidden full-document coverage or RAG. A versioned JSON instruction envelope treats source text as untrusted data. Strict typed outputs separate author claims, interpretations and suggestions. Published witnesses match immutable owned text exactly; quantitative fields and URLs must occur in evidence. Research suggestions explicitly separate proposed methods/resources and estimates from uncertainty. These checks establish provenance and format, not semantic correctness, extraction accuracy or scientific novelty.
+
+Workers record attempts before I/O, recheck configuration/privacy, and commit each validated section independently. Actual mode/model/configuration/attempt provenance is attached server-side to each successful section. Provider credentials reflected into decoded output are rejected. Raw invalid responses, keys and prompts never enter task broker payloads or usage logs. The broker carries only report UUIDs.
+
+Only approved fallback models run after definite upstream rejection/rate/connect failures. Invalid output and ambiguous outcomes are not automatically replayed. Lease recovery preserves published parts and turns interrupted started attempts into unknown outcomes; it never requeues a paid analysis. Explicit retries create a full new report, with uncertainty acknowledgment when required. The UI exposes progress, versions, per-request usage and exact source inspection beside the PDF. Real-provider and scientific evaluation remain separate pending work.
 
 ## Implemented extraction boundary
 
