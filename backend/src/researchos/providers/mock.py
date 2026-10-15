@@ -51,6 +51,22 @@ class MockProvider:
                         }
                     ],
                 }
+            if section == "research_gaps":
+                explanation = (
+                    "نمونهٔ آزمایشی؛ ارزیابی علمی نشده است."
+                    if persian
+                    else "MOCK workflow fixture; no scientific evaluation."
+                )
+                payload["items"][0]["research"] = {
+                    "motivation": explanation,
+                    "proposed_approach": explanation,
+                    "uncertainty": explanation,
+                }
+            if section == "overview":
+                payload["items"] = [
+                    {**payload["items"][0], "topic": topic}
+                    for topic in ["short_summary", "detailed_summary", "beginner_explanation"]
+                ]
             return TextResponse(
                 json.dumps(payload, ensure_ascii=False), TokenUsage(8, 12, 0, 20), "mock"
             )

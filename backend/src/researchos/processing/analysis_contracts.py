@@ -83,6 +83,20 @@ class Claim(StrictModel):
     evidence: list[Witness] = Field(min_length=1, max_length=5)
     result: ResultValue | None = None
     resource: ResourceValue | None = None
+    research: "ResearchIdea | None" = None
+
+
+class ResearchIdea(StrictModel):
+    motivation: str = Field(min_length=1, max_length=1000)
+    proposed_approach: str = Field(min_length=1, max_length=1000)
+    implementation_strategy: str | None = Field(default=None, max_length=1000)
+    possible_data: str | None = Field(default=None, max_length=500)
+    possible_models: str | None = Field(default=None, max_length=500)
+    proposed_evaluation: str | None = Field(default=None, max_length=500)
+    estimated_difficulty: str | None = Field(default=None, max_length=500)
+    estimated_compute: str | None = Field(default=None, max_length=500)
+    potential_contribution: str | None = Field(default=None, max_length=500)
+    uncertainty: str = Field(min_length=1, max_length=1000)
 
 
 class SectionOutput(StrictModel):
@@ -107,6 +121,8 @@ class SectionOutput(StrictModel):
                 raise ValueError("Invalid topic for section")
             if self.section == "research_gaps" and item.kind != "ai_suggestion":
                 raise ValueError("Research gaps are suggestions, not verified novelty")
+            if (item.research is not None) != (self.section == "research_gaps"):
+                raise ValueError("Research suggestions require explicit approach and uncertainty")
             if (
                 item.topic in {"author_limitation", "author_direction"}
                 and item.kind != "author_claim"

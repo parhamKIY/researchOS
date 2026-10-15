@@ -98,3 +98,22 @@ def test_claim_prose_cannot_bypass_measurement_or_url_grounding(text):
     output["items"][0]["text"] = text
     with pytest.raises(ValueError):
         validate_section(json.dumps(output), "overview", context)
+
+
+def test_research_proposals_require_labeled_suggestions_and_uncertainty():
+    context, output = fixture()
+    output["section"] = "research_gaps"
+    claim = output["items"][0]
+    claim["kind"], claim["topic"] = "ai_suggestion", "research_suggestion"
+    with pytest.raises(ValueError):
+        validate_section(json.dumps(output), "research_gaps", context)
+    claim["research"] = {
+        "motivation": "Explicit suggestion",
+        "proposed_approach": "Evaluate a possible improvement",
+        "uncertainty": "Not evaluated; related work unknown",
+    }
+    result = validate_section(json.dumps(output), "research_gaps", context)
+    assert result["items"][0]["research"]["estimated_compute"] is None
+    claim["kind"] = "author_claim"
+    with pytest.raises(ValueError):
+        validate_section(json.dumps(output), "research_gaps", context)
