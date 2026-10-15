@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -118,6 +119,8 @@ class SectionOutput(StrictModel):
                 raise ValueError("Inferred directions must be labeled suggestions")
             if item.result and (self.section != "results" or item.kind != "author_claim"):
                 raise ValueError("Numeric results must be source claims")
+            if item.topic == "quantitative_result" and item.result is None:
+                raise ValueError("Quantitative results require structured source measurements")
             if (item.resource is not None) != (self.section == "resources"):
                 raise ValueError("Resource entries require explicit source resources")
         return self
@@ -217,6 +220,16 @@ def validate_section(raw: str, section: str, context: dict) -> dict:
                 }
             )
         quoted = "\n".join(sources)
+        if item["kind"] != "ai_suggestion" and any(
+            number not in quoted
+            for number in re.findall(r"[+-]?\d+(?:[.,]\d+)*(?:%|٪)?", item["text"])
+        ):
+            raise ValueError("Numeric claims require matching source values")
+        if any(
+            url.rstrip(".,);]") not in quoted
+            for url in re.findall(r'https?://[^\s<>"\u200c]+', item["text"])
+        ):
+            raise ValueError("Claim URLs must appear in evidence")
         if item["result"] and any(
             value and value not in quoted for value in item["result"].values()
         ):

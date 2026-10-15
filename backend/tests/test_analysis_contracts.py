@@ -90,3 +90,11 @@ def test_numeric_results_and_resources_cannot_invent_fields():
     item["resource"] = {"name": "DATA", "url": "https://invented.example.com"}
     with pytest.raises(ValueError):
         validate_section(json.dumps(output), "resources", context)
+
+
+@pytest.mark.parametrize("text", ["Accuracy is 99%", "See https://invented.example.com"])
+def test_claim_prose_cannot_bypass_measurement_or_url_grounding(text):
+    context, output = fixture()
+    output["items"][0]["text"] = text
+    with pytest.raises(ValueError):
+        validate_section(json.dumps(output), "overview", context)

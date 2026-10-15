@@ -159,6 +159,12 @@ def execute_analysis(identifier, settings, session_factory, *, adapter_override=
                 if result.execution_mode != ("mock" if target.adapter_name == "mock" else "live"):
                     raise ValueError("Execution mode mismatch")
                 payload = validate_section(result.text, section, context)
+                payload["generation"] = {
+                    "execution_mode": result.execution_mode,
+                    "configuration_id": target.configuration_id,
+                    "model_name": target.model_name,
+                    "attempt_id": str(attempt_id),
+                }
             except ProviderFailure as exc:
                 code = exc.code if exc.code in SAFE_ERRORS else "provider_unavailable"
                 unknown = exc.outcome_unknown

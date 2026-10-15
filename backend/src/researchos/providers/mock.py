@@ -34,6 +34,8 @@ class MockProvider:
                             if section == "limitations"
                             else "suggested_direction"
                             if section == "future_work"
+                            else "implementation"
+                            if section == "results"
                             else SECTION_TOPICS[section][0],
                             "text": "خروجی آزمایشی؛ تحلیل علمی واقعی نیست."
                             if persian

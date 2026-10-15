@@ -52,6 +52,7 @@ def test_complete_mock_report_exact_evidence_history_and_duplicate_delivery(
     assert result["scientific_verification"] == "not_evaluated"
     for section in result["sections"]:
         assert section["state"] in {"completed", "unavailable"}
+        assert section["payload"]["generation"]["execution_mode"] == "mock"
         for claim in section["payload"]["items"]:
             assert ("آزمایشی" in claim["text"]) if language == "fa" else "MOCK" in claim["text"]
             witness = claim["evidence"][0]
