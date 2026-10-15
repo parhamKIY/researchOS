@@ -20,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-SCHEMA_REVISION = "0007_system_llm"
+SCHEMA_REVISION = "0008_analysis"
 
 
 class Base(DeclarativeBase):
@@ -101,6 +101,106 @@ class SystemLLMSettings(Base):
         ForeignKey("system_provider_candidates.id", ondelete="RESTRICT")
     )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AnalysisReport(Base):
+    __tablename__ = "analysis_reports"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "paper_id", "document_version_id"],
+            ["document_versions.owner_id", "document_versions.paper_id", "document_versions.id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("owner_id", "id", name="uq_analysis_reports_owner_id"),
+        UniqueConstraint("owner_id", "paper_id", "id", name="uq_analysis_reports_owner_paper_id"),
+        ForeignKeyConstraint(
+            ["owner_id", "paper_id", "retry_of_id"],
+            ["analysis_reports.owner_id", "analysis_reports.paper_id", "analysis_reports.id"],
+            ondelete="CASCADE",
+            name="fk_analysis_retry_same_paper",
+        ),
+        CheckConstraint(
+            "state IN ('queued','running','completed','partially_completed','failed')",
+            name="valid_state",
+        ),
+        CheckConstraint("language IN ('fa','en')", name="valid_language"),
+        CheckConstraint("progress >= 0 AND progress <= 100", name="valid_progress"),
+        Index(
+            "ix_analysis_reports_active_paper",
+            "owner_id",
+            "paper_id",
+            unique=True,
+            postgresql_where=text("state IN ('queued','running')"),
+        ),
+        Index("ix_analysis_reports_owner_created", "owner_id", "created_at", "id"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column()
+    paper_id: Mapped[uuid.UUID] = mapped_column()
+    document_version_id: Mapped[uuid.UUID] = mapped_column()
+    retry_of_id: Mapped[uuid.UUID | None] = mapped_column()
+    state: Mapped[str] = mapped_column(String(24), default="queued", server_default="queued")
+    language: Mapped[str] = mapped_column(String(2))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    snapshot: Mapped[dict] = mapped_column(JSONB)
+    progress: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    stage: Mapped[str | None] = mapped_column(String(40))
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    outcome_unknown: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    lease_token: Mapped[uuid.UUID | None] = mapped_column()
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dispatch_after: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AnalysisPart(Base):
+    __tablename__ = "analysis_parts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "report_id"],
+            ["analysis_reports.owner_id", "analysis_reports.id"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("state IN ('completed','unavailable','failed')", name="valid_state"),
+    )
+    report_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), primary_key=True)
+    owner_id: Mapped[uuid.UUID] = mapped_column()
+    state: Mapped[str] = mapped_column(String(16))
+    payload: Mapped[dict | None] = mapped_column(JSONB)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+
+
+class AnalysisAttempt(Base):
+    __tablename__ = "analysis_attempts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["owner_id", "report_id"],
+            ["analysis_reports.owner_id", "analysis_reports.id"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "state IN ('started','completed','failed','outcome_unknown')", name="valid_state"
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column()
+    report_id: Mapped[uuid.UUID] = mapped_column()
+    section: Mapped[str] = mapped_column(String(32))
+    configuration_id: Mapped[uuid.UUID] = mapped_column()
+    model_name: Mapped[str] = mapped_column(String(200))
+    execution_mode: Mapped[str] = mapped_column(String(10))
+    state: Mapped[str] = mapped_column(String(24), default="started")
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    thought_tokens: Mapped[int | None] = mapped_column(Integer)
+    total_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AuthSession(Base):
