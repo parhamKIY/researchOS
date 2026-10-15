@@ -79,6 +79,16 @@ async def bounded_generate(adapter, request, key):
         return await adapter.generate_text(request, key)
 
 
+def contains_credential(value, secret):
+    if isinstance(value, str):
+        return secret in value
+    if isinstance(value, dict):
+        return any(contains_credential(item, secret) for item in value.values())
+    if isinstance(value, list):
+        return any(contains_credential(item, secret) for item in value)
+    return False
+
+
 def prepare_attempt(db, identifier, token, section, index, settings):
     report = locked_report(db, identifier)
     if not valid_lease(report, token):
@@ -159,6 +169,9 @@ def execute_analysis(identifier, settings, session_factory, *, adapter_override=
                 if result.execution_mode != ("mock" if target.adapter_name == "mock" else "live"):
                     raise ValueError("Execution mode mismatch")
                 payload = validate_section(result.text, section, context)
+                if target.key and contains_credential(payload, target.key.get_secret_value()):
+                    payload = None
+                    raise ValueError("Sensitive provider output rejected")
                 payload["generation"] = {
                     "execution_mode": result.execution_mode,
                     "configuration_id": target.configuration_id,

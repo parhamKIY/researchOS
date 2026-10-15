@@ -11,7 +11,7 @@ from test_analysis import enqueue, prepared
 from test_auth import account_client as account_client
 
 from researchos.domain.models import AnalysisAttempt, AnalysisReport, ModelConfiguration
-from researchos.providers.contracts import ProviderFailure, TextResponse
+from researchos.providers.contracts import ProviderFailure, TextResponse, TokenUsage
 from researchos.providers.mock import MockProvider
 from researchos.services.analysis_worker import (
     dispatch_analyses,
@@ -242,3 +242,43 @@ def test_queued_privacy_revocation_prevents_outbound_request(analysis_fixture):
 
     assert execute(analysis_fixture, identifier, forbidden)["status"] == "failed"
     assert client.get(f"/api/v1/analyses/{identifier}").json()["usage"] == []
+
+
+def test_upstream_cannot_reflect_a_provider_key_into_report_prose(analysis_fixture):
+    from researchos.core.credentials import CredentialCipher
+    from researchos.domain.models import Paper, ProviderConnection
+
+    client, connection, _, (owner, paper_id, _, _, provider_id) = analysis_fixture
+    secret = "explicit-provider-fixture-not-live"
+    with Session(connection, join_transaction_mode="create_savepoint") as db:
+        provider = db.get(ProviderConnection, provider_id)
+        provider.adapter = "gemini"
+        provider.encrypted_credential = CredentialCipher(
+            client.app.state.settings.credential_encryption_key.get_secret_value()
+        ).encrypt(secret, owner, provider_id)
+        db.get(Paper, paper_id).external_processing_allowed = True
+        db.commit()
+
+    class Reflect:
+        async def generate_text(self, request, key):
+            result = await MockProvider().generate_text(request, key)
+            payload = json.loads(result.text)
+            if payload["items"]:
+                payload["items"][0]["text"] = secret
+            else:
+                payload["unavailable_reason"] = secret
+            # Encode ASCII as JSON escapes to exercise validation after decoding.
+            text = json.dumps(payload).replace("explicit", "\\u0065xplicit")
+            return TextResponse(text, TokenUsage(10, 10, None, 20), "live")
+
+    identifier = enqueue(
+        analysis_fixture, {**prepared(analysis_fixture), "acknowledge_external_processing": True}
+    ).json()["id"]
+    assert execute(analysis_fixture, identifier, lambda *args: Reflect())["status"] == "failed"
+    response = client.get(f"/api/v1/analyses/{identifier}")
+    assert secret not in response.text
+    assert all(section["payload"] is None for section in response.json()["sections"])
+    assert not response.json()["outcome_unknown"]
+    assert all(
+        attempt["error_code"] == "analysis_output_invalid" for attempt in response.json()["usage"]
+    )
