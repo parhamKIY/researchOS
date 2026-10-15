@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiFailure, type Session } from "@/lib/api";
 import { evidenceParts } from "@/lib/evidence";
+import { AnalysisPanel } from "@/components/analysis-panel";
 
 type Job = { id: string; state: string; stage: string | null; progress_percent: number; error: { code: string } | null };
 type Version = { id: string; state: string; created_at: string; parser_name: string; parser_version: string; metadata: Record<string, unknown>; warnings: string[]; page_count: number; figure_count: number };
@@ -119,6 +120,7 @@ export function DocumentExtraction({ paperId, jobId, session, expired, changed, 
     {error && <p role="alert" className="error-message">{error}</p>}
     {job && <div role="status"><p>{job.state.replaceAll("_", " ")} · {job.progress_percent}%{active && job.stage ? ` · ${job.stage.replaceAll("_", " ")}` : ""}</p>{active && <progress max={100} value={job.progress_percent} aria-label="Extraction progress" />}{job.state === "failed" && job.error && <p className="error-message">Extraction failed: {job.error.code.replaceAll("_", " ")}. The original PDF is available.</p>}</div>}
     <p className="muted">Extraction runs locally. Scanned pages need OCR, which is not available yet. Reading order, section labels and caption associations require inspection. Vector figures and structured tables are not extracted.</p>
+    {selected && <AnalysisPanel key={`${paperId}:${selected}`} paperId={paperId} versionId={selected} ready={!!version && ["ready", "partially_ready"].includes(version.state)} session={session} expired={expired} sourcePage={sourcePage} />}
     {versions.length > 0 && <label>Extraction history<select aria-label="Extraction history" value={selected} onChange={(event) => { setSelected(event.target.value); setPageNumber(1); setPage(null); setSpan(null); setSections([]); setFigures([]); }}>
       {versions.map((item) => <option key={item.id} value={item.id}>{new Date(item.created_at).toLocaleString()} · {item.state.replaceAll("_", " ")}</option>)}
     </select></label>}

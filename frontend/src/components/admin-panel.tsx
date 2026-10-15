@@ -141,7 +141,7 @@ export function AdminPanel({ session, expired }: { session: Session; expired: ()
             <button className="primary-button" disabled={busy}>{busy ? "Testing connection…" : "Test connection and apply"}</button>
           </fieldset>
         </form>
-        <p className="muted">The default applies to text tasks with no personal route. Explicit personal routes take precedence. Scientific paper analysis is scheduled for the next milestone.</p>
+        <p className="muted">The default applies to text tasks with no personal route. Paper owners must separately allow external processing and approve their analysis plan.</p>
         <details><summary>Recent connection checks</summary><div className="usage-table"><table><caption className="sr-only">System provider connection checks</caption><thead><tr><th>Model / protocol</th><th>Status</th><th>Checked</th><th>Usage</th></tr></thead><tbody>{settings.checks.map((check) => <tr key={check.id}><td>{check.model_name}<small>{check.execution_mode === "mock" ? "MOCK · synthetic usage" : check.adapter}</small></td><td>{check.state}{check.error_code && <small>{connectionMessage(check)}</small>}</td><td>{check.checked_at ? new Date(check.checked_at).toLocaleString() : "Pending"}</td><td>{check.total_tokens === null ? "Unknown tokens" : `${check.total_tokens} tokens`}<small>{check.latency_ms === null ? "" : `${check.latency_ms} ms · `}{check.execution_mode === "mock" ? "No external charge" : "Cost unavailable"}</small></td></tr>)}</tbody></table>{settings.checks.length === 0 && <p>No checks recorded.</p>}</div></details>
       </>}
     </section>

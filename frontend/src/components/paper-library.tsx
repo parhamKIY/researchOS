@@ -133,7 +133,7 @@ export function PaperLibrary({ session, expired, project }: { session: Session; 
     {cursor && <button className="refresh-button" disabled={busy} onClick={more}>Load more papers</button>}
     {selected && <section className="paper-detail" aria-label="Paper detail">
       <div className="section-heading"><h2>{selected.title || selected.original_name}</h2><button className="refresh-button" onClick={() => { setSelected(null); setDeleting(false); }}>Close</button></div>
-      <p className="muted">Original document saved. Explore extracted pages and images below. AI analysis will be added in a later milestone.</p>
+      <p className="muted">Review extraction and create an evidence-linked analysis beside the original. AI reports require verification; Mock output tests only the workflow.</p>
       <form className="title-form" key={`${selected.id}:${selected.revision}`} onSubmit={rename}>
         <label>Paper title<input name="title" maxLength={500} defaultValue={selected.title ?? ""} placeholder="Optional title" /></label><button className="refresh-button" disabled={busy}>Save title</button>
       </form>

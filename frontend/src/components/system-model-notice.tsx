@@ -18,6 +18,6 @@ export function SystemModelNotice({ expired }: { expired: () => void }) {
   }, [expired]);
   return <section className="system-model-card" aria-label="System default text model"><p className="eyebrow">System default text model</p>
     {error ? <p role="alert">{error}</p> : !state ? <p role="status">Loading default model…</p> : state.active ? <p><strong>{state.active.model_name}</strong> · {state.active.execution_mode === "mock" ? "MOCK · local fixture" : "Connection verified"}</p> : <p>No system provider is active. An administrator can configure it.</p>}
-    <p className="muted">Personal model routes take precedence. Paper analysis will use the selected provider when that feature is available.</p>
+    <p className="muted">Personal model routes take precedence. Open a paper to review its analysis plan and approve the exact destinations before sending text.</p>
   </section>;
 }
