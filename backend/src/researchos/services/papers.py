@@ -207,9 +207,21 @@ def patch_paper(
 
 
 def delete_paper(db: Session, owner: uuid.UUID, identifier: uuid.UUID, match: str | None):
+    from researchos.domain.models import AnalysisReport
+
     db.scalar(select(User.id).where(User.id == owner).with_for_update())
     paper = owned_paper(db, owner, identifier, lock=True)
     require_revision(paper, match)
+    if db.scalar(
+        select(AnalysisReport.id).where(
+            AnalysisReport.owner_id == owner,
+            AnalysisReport.paper_id == identifier,
+            AnalysisReport.state.in_(["queued", "running"]),
+        )
+    ):
+        raise ApiError(
+            409, "analysis_active", "Wait for analysis to finish before deleting this paper"
+        )
     if db.scalar(
         select(ProcessingJob.id).where(
             ProcessingJob.owner_id == owner,

@@ -7,7 +7,7 @@ app = Celery(
     "researchos",
     broker=settings.redis_url.get_secret_value(),
     backend=settings.redis_url.get_secret_value(),
-    include=["researchos.tasks.ingestion"],
+    include=["researchos.tasks.ingestion", "researchos.tasks.analysis"],
 )
 app.conf.update(
     accept_content=["json"],

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from researchos.core.config import Settings
 from researchos.infrastructure.database import build_engine
 from researchos.infrastructure.storage import LocalFileStore
+from researchos.services.analysis_worker import dispatch_analyses, recover_analyses
 from researchos.services.dispatch import dispatch_ready_jobs, recover_expired_jobs
 from researchos.services.maintenance import reconcile_storage
 from researchos.services.system_llm import recover_system_probes
@@ -25,6 +26,8 @@ def main():
                 with Session(engine) as db:
                     recover_expired_jobs(db)
                     recover_system_probes(db)
+                    recover_analyses(db)
+                    dispatch_analyses(db, app)
                     dispatch_ready_jobs(db, app)
                     if int(time.monotonic()) // 60 != last_sweep:
                         reconcile_storage(db, store)
