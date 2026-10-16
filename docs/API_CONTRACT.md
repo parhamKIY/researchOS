@@ -1,6 +1,6 @@
 # Initial REST API contract
 
-Status: version 0.6. Private library/extraction, provider settings, administration and stage 5 analysis endpoints are implemented. Chat, retrieval and external literature discovery remain planned. The implemented boundaries below take precedence over broader design sketches. Real-provider analysis and scientific quality have not been verified.
+Status: version 0.7. Private library/extraction, provider settings, administration, administrator model discovery and stage 5 analysis endpoints are implemented. Chat, retrieval and external literature discovery remain planned. The implemented boundaries below take precedence over broader design sketches. Real-provider analysis and scientific quality have not been verified.
 
 ## Implemented stage 4 boundary
 
@@ -10,7 +10,7 @@ Status: version 0.6. Private library/extraction, provider settings, administrati
 - Routing tasks are `paper_summary`, `methodology`, `research_gaps`, `paper_chat`, `figure_analysis`, `embeddings`. PUT atomically replaces up to six rules; model/provider ownership, enablement, declared capability and exact allowed provider set are checked. A stale aggregate ETag returns 412. Stage 5 executes approved text fallbacks only after definite request failures; ambiguous outcomes are not automatically replayed.
 - `POST /providers/{id}/test` takes `{model_configuration_id}` and tests a text-capable configuration from that exact provider. It sends only a fixed connection message and may consume quota/cost. Expected provider errors return HTTP 200 with `status: failed`, a safe code, mode, checked time, usage IDs and an outcome-unknown flag; local auth/ownership/validation/configuration errors retain standard HTTP errors. Tests are limited to ten recorded attempts/minute per owner before starting a new test; a bounded retry may add a second attempt. Vision and embedding declarations are not verified by this probe.
 - `GET /analytics/usage` lists owner-private attempt records: safe names/IDs, task, mode, state, attempt, available input/output/thought/total token counts, latency, nullable cost/currency/source and timestamp. No prompt, output, credential or encrypted value is returned. Mock counts are synthetic. Gemini billing cost is not inferred from token counts.
-- The settings UI changes saved models and parameters without restarting the backend. Stage 5 paper reports are described below. Provider model discovery, server encryption-key rotation and spending limits remain unimplemented.
+- The settings UI changes saved models and parameters without restarting the backend. Stage 5 paper reports are described below. Model discovery is implemented for administrator system settings; personal provider model discovery, server encryption-key rotation and spending limits remain unimplemented.
 All resource routes below are relative to `/api/v1`.
 Related: [architecture](ARCHITECTURE.md), [data model](DATA_MODEL.md).
 
@@ -24,6 +24,7 @@ Routes are relative to `/api/v1`. Session responses include `user.is_admin`; eve
 | `GET /admin/users` | Admin-only identities, status, role, revision and `etag`; signed cursor, limit 1–100. No password hashes. |
 | `PATCH /admin/users/{id}` | Only `{is_active: boolean}` and the account's `If-Match`. Disabling revokes sessions. Own/admin accounts are protected (409). |
 | `GET /admin/llm` | Singleton `revision`, `etag`, nullable `active`, latest 20 safe checks. No keys/ciphertext. |
+| `POST /admin/llm/models` | Admin + origin/CSRF; `{adapter, base_url?, api_key?}`. Returns `{items: [{id, display_name}], execution_mode}` without saving keys or changing active settings. Blank key reuses only the same active protocol/base URL. Ten requests/min/admin; sanitized upstream errors are 502; unsupported listing is `model_catalog_unsupported`. |
 | `POST /admin/llm/verify-and-apply` | Aggregate `If-Match`, `{adapter, model_name, base_url?, api_key?, parameters?}`; returns `{applied, check, settings}`. Expected probe failures return 200 with `applied: false`; active settings stay unchanged. |
 | `GET /settings/system-model` | Signed-in users; active model/protocol/parameters/mode/check time, revision and etag. Endpoint/key status/history omitted. |
 

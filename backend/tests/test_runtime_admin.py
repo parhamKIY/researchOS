@@ -46,6 +46,17 @@ def test_live_admin_proxy_mock_activation_access_controls_and_cleanup():
             headers = {**origin, "X-CSRF-Token": signed_in.json()["csrf_token"]}
             current = client.get("/api/v1/admin/llm")
             assert current.status_code == 200 and "encrypted_credential" not in current.text
+            catalog_route = "/api/v1/admin/llm/models"
+            assert (
+                client.post(catalog_route, headers=origin, json={"adapter": "mock"}).status_code
+                == 403
+            )
+            catalog = client.post(catalog_route, headers=headers, json={"adapter": "mock"})
+            assert catalog.status_code == 200 and catalog.json() == {
+                "items": [{"id": "fixture-model", "display_name": "Mock · local fixture"}],
+                "execution_mode": "mock",
+            }
+            assert client.get("/api/v1/admin/llm").json() == current.json()
             # Never replace a provider configured by a human during a test run.
             if current.json()["active"] is None:
                 result = client.post(
@@ -80,6 +91,14 @@ def test_live_admin_proxy_mock_activation_access_controls_and_cleanup():
             assert signed_in.status_code == 200 and not signed_in.json()["user"]["is_admin"]
             assert client.get("/api/v1/admin/overview").status_code == 403
             assert client.get("/api/v1/admin/users").status_code == 403
+            assert (
+                client.post(
+                    catalog_route,
+                    headers={**origin, "X-CSRF-Token": signed_in.json()["csrf_token"]},
+                    json={"adapter": "mock"},
+                ).status_code
+                == 403
+            )
             assert (
                 client.post(
                     "/api/v1/admin/llm/verify-and-apply",
