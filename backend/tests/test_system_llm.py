@@ -11,7 +11,7 @@ from test_admin import admin_client as admin_client
 from test_auth import PASSWORD
 from test_auth import account_client as account_client
 
-from researchos.api.admin_schemas import SystemLLMWrite
+from researchos.api.admin_schemas import SystemLLMWrite, SystemProviderWrite
 from researchos.api.errors import ApiError
 from researchos.domain.models import (
     AuthSession,
@@ -27,6 +27,7 @@ from researchos.providers.compatible import CompatibleProvider
 from researchos.providers.contracts import ProviderFailure, TextRequest, TextResponse, TokenUsage
 from researchos.services.system_llm import (
     candidate_key,
+    list_system_models,
     recover_system_probes,
     settings_read,
     verify_and_apply,
@@ -419,3 +420,88 @@ def test_abandoned_probe_cleanup_preserves_active_and_recent_probe(admin_client)
             str(current.active_candidate_id) == before["active"]["id"]
             and current.revision == before["revision"]
         )
+
+
+def test_model_discovery_requires_admin_csrf_and_never_activates(admin_client):
+    client, _, headers, _ = admin_client
+    before = apply_mock(client, headers)["settings"]
+    route = "/api/v1/admin/llm/models"
+    assert client.post(route, json={"adapter": "mock"}).status_code == 403
+    result = client.post(route, headers=headers, json={"adapter": "mock"})
+    assert result.status_code == 200 and result.json()["execution_mode"] == "mock"
+    assert client.get("/api/v1/admin/llm").json() == before
+    # Blank credentials must never be sent to another endpoint.
+    assert client.post(route, headers=headers, json={"adapter": "gemini"}).status_code == 422
+    for _ in range(8):
+        assert client.post(route, headers=headers, json={"adapter": "mock"}).status_code == 200
+    limited = client.post(route, headers=headers, json={"adapter": "mock"})
+    assert limited.status_code == 429 and limited.headers["Retry-After"] == "60"
+    login = client.post(
+        "/api/v1/auth/login",
+        headers={"Origin": "http://localhost:3000"},
+        json={"email": "admin-target@example.invalid", "password": PASSWORD},
+    )
+    assert (
+        client.post(
+            route,
+            headers={**headers, "X-CSRF-Token": login.json()["csrf_token"]},
+            json={"adapter": "mock"},
+        ).status_code
+        == 403
+    )
+
+
+def test_catalog_reuses_encrypted_key_without_persisting_discovery(admin_client):
+    client, connection, _, _ = admin_client
+    body = {"adapter": "gemini", "model_name": "fixture", "api_key": KEY}
+    before = run_apply(connection, client, body, Success())["settings"]
+
+    async def catalog(adapter, base, key):
+        assert adapter == "gemini" and key.get_secret_value() == KEY
+        return {"items": [{"id": "fixture", "display_name": "Fixture"}], "execution_mode": "live"}
+
+    with Session(connection, join_transaction_mode="create_savepoint") as db:
+        owner = db.scalar(select(User.id).where(User.email_normalized == "account@example.invalid"))
+        count = len(list(db.scalars(select(SystemProviderCandidate))))
+        result = asyncio.run(
+            list_system_models(
+                db,
+                owner,
+                SystemProviderWrite(adapter="gemini"),
+                client.app.state.settings,
+                discover=catalog,
+            )
+        )
+        assert result["items"][0]["id"] == "fixture" and KEY not in json.dumps(result)
+        assert len(list(db.scalars(select(SystemProviderCandidate)))) == count
+        assert json.loads(json.dumps(settings_read(db, admin=True), default=str)) == before
+
+
+@pytest.mark.parametrize("revoke", [False, True])
+def test_catalog_sanitizes_failures_and_rechecks_authority(admin_client, revoke):
+    client, connection, _, _ = admin_client
+
+    async def catalog(adapter, base, key):
+        if not revoke:
+            raise ProviderFailure(KEY)
+        with Session(connection, join_transaction_mode="create_savepoint") as db:
+            db.scalar(
+                select(User).where(User.email_normalized == "account@example.invalid")
+            ).is_admin = False
+            db.commit()
+        return {"items": [], "execution_mode": "live"}
+
+    with Session(connection, join_transaction_mode="create_savepoint") as db:
+        owner = db.scalar(select(User.id).where(User.email_normalized == "account@example.invalid"))
+        with pytest.raises(ApiError) as error:
+            asyncio.run(
+                list_system_models(
+                    db,
+                    owner,
+                    SystemProviderWrite(adapter="gemini", api_key=KEY),
+                    client.app.state.settings,
+                    discover=catalog,
+                )
+            )
+        assert error.value.status_code == (403 if revoke else 502)
+        assert KEY not in str(error.value.detail)

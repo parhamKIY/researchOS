@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from researchos.api.errors import ApiError
 from researchos.core.credentials import CredentialUnavailable, SystemCredentialCipher
 from researchos.domain.models import AuthSession, SystemLLMSettings, SystemProviderCandidate
+from researchos.providers.catalog import ERROR_MESSAGES, discover_models
 from researchos.providers.compatible import CompatibleProvider
 from researchos.providers.contracts import GenerationParameters, ProviderFailure, TextRequest
 from researchos.providers.gemini import GeminiProvider
@@ -135,6 +136,42 @@ def check_admin_session(db, admin_id, session_id):
         raise ApiError(401, "unauthenticated", "Sign in to continue")
 
 
+def resolve_system_key(db, payload, settings):
+    if payload.adapter == "mock" or payload.api_key is not None:
+        return payload.api_key
+    current = system_settings(db)
+    active = (
+        db.get(SystemProviderCandidate, current.active_candidate_id)
+        if current.active_candidate_id
+        else None
+    )
+    if active is None or active.adapter != payload.adapter or active.base_url != payload.base_url:
+        raise ApiError(422, "credential_required", "Enter an API key for this provider endpoint")
+    return candidate_key(active, settings)
+
+
+async def list_system_models(
+    db, admin_id, payload, settings, *, session_id=None, discover=discover_models
+):
+    require_admin(db, admin_id)
+    check_admin_session(db, admin_id, session_id)
+    key = resolve_system_key(db, payload, settings)
+    db.commit()  # Do not hold a database transaction during provider I/O.
+    try:
+        result = await discover(payload.adapter, payload.base_url, key)
+    except ProviderFailure as exc:
+        code = exc.code if exc.code in ERROR_MESSAGES else "provider_unavailable"
+        raise ApiError(502, code, ERROR_MESSAGES[code]) from None
+    except Exception:
+        raise ApiError(
+            502, "provider_unavailable", ERROR_MESSAGES["provider_unavailable"]
+        ) from None
+    db.expire_all()
+    require_admin(db, admin_id)
+    check_admin_session(db, admin_id, session_id)
+    return result
+
+
 def recover_system_probes(db):
     """Erase keys from abandoned probes without touching the active configuration."""
     now = datetime.now(UTC)
@@ -182,22 +219,7 @@ async def verify_and_apply(
             "Too many connection tests; wait one minute",
             {"Retry-After": "60"},
         )
-    active = (
-        db.get(SystemProviderCandidate, current.active_candidate_id)
-        if current.active_candidate_id
-        else None
-    )
-    key = payload.api_key
-    if payload.adapter != "mock" and key is None:
-        if (
-            active is None
-            or active.adapter != payload.adapter
-            or active.base_url != payload.base_url
-        ):
-            raise ApiError(
-                422, "credential_required", "Enter an API key for this provider endpoint"
-            )
-        key = candidate_key(active, settings)
+    key = resolve_system_key(db, payload, settings)
     candidate = SystemProviderCandidate(
         id=uuid.uuid4(),
         created_by=admin_id,

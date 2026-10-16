@@ -9,13 +9,11 @@ from researchos.providers.safe_http import normalize_base_url
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 
-class SystemLLMWrite(BaseModel):
+class SystemProviderWrite(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     adapter: Literal["gemini", "openai_compatible", "mock"]
     base_url: str | None = Field(default=None, max_length=500)
-    model_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
     api_key: SecretStr | None = Field(default=None, min_length=1, max_length=4096)
-    parameters: GenerationParameters = Field(default_factory=GenerationParameters)
 
     @model_validator(mode="after")
     def validate_endpoint(self):
@@ -30,9 +28,19 @@ class SystemLLMWrite(BaseModel):
             self.base_url = normalize_base_url(
                 self.base_url or (GEMINI_BASE if self.adapter == "gemini" else "")
             )
-            if self.adapter == "gemini" and (
-                self.base_url != GEMINI_BASE
-                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}", self.model_name)
-            ):
-                raise ValueError("Gemini requires its official endpoint and model identifier")
+            if self.adapter == "gemini" and self.base_url != GEMINI_BASE:
+                raise ValueError("Gemini requires its official endpoint")
+        return self
+
+
+class SystemLLMWrite(SystemProviderWrite):
+    model_name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
+    parameters: GenerationParameters = Field(default_factory=GenerationParameters)
+
+    @model_validator(mode="after")
+    def validate_model(self):
+        if self.adapter == "gemini" and not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}", self.model_name
+        ):
+            raise ValueError("Gemini requires its official model identifier")
         return self
