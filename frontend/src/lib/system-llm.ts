@@ -11,12 +11,13 @@ export type SystemCheck = SystemModel & {
 export type SystemSettings = { revision: number; etag: string; active: SystemCheck | null; checks: SystemCheck[] };
 export type PublicSystemSettings = { active: SystemModel | null };
 export type ApplyResult = { applied: boolean; check: SystemCheck; settings: SystemSettings };
+export type ModelCatalog = { items: { id: string; display_name: string }[]; execution_mode: "live" | "mock" };
 export const geminiBase = "https://generativelanguage.googleapis.com/v1beta";
 
 export function connectionMessage(check: Pick<SystemCheck, "error_code" | "outcome_unknown">): string {
   const messages: Record<string, string> = {
     provider_authentication_failed: "The provider rejected the API key.",
-    provider_access_denied: "This key does not have access to the selected model.",
+    provider_access_denied: "The provider denied access. Check API permissions, model access, account restrictions and region.",
     model_unavailable: "The model or API endpoint was not found.",
     provider_request_rejected: "The provider rejected the request. Check the model, API base URL and parameter support.",
     provider_address_rejected: "The endpoint did not resolve exclusively to public network addresses.",

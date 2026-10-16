@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiFailure, type Session } from "@/lib/api";
-import { connectionMessage, geminiBase, type ApplyResult, type SystemAdapter, type SystemSettings } from "@/lib/system-llm";
+import { connectionMessage, geminiBase, type ApplyResult, type ModelCatalog, type SystemAdapter, type SystemSettings } from "@/lib/system-llm";
+import { ProviderModelSelect } from "@/components/provider-model-select";
 
 type AdminUser = { id: string; email: string; is_active: boolean; is_admin: boolean; etag: string };
 type Users = { items: AdminUser[]; next_cursor: string | null };
@@ -14,6 +15,10 @@ export function AdminPanel({ session, expired }: { session: Session; expired: ()
   const [users, setUsers] = useState<Users | null>(null);
   const [adapter, setAdapter] = useState<SystemAdapter>("gemini");
   const [baseUrl, setBaseUrl] = useState(geminiBase);
+  const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
+  const [model, setModel] = useState("");
+  const [listing, setListing] = useState(false);
+  const keyInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -38,6 +43,8 @@ export function AdminPanel({ session, expired }: { session: Session; expired: ()
     setSettings(config);
     setAdapter(config.active?.adapter ?? "gemini");
     setBaseUrl(config.active?.base_url ?? geminiBase);
+    setCatalog(null); setModel("");
+    if (keyInput.current) keyInput.current.value = "";
   }
 
   useEffect(() => {
@@ -59,12 +66,12 @@ export function AdminPanel({ session, expired }: { session: Session; expired: ()
 
   async function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!settings) return;
+    if (!settings || (adapter !== "mock" && !catalog?.items.some((item) => item.id === model))) return;
     const element = event.currentTarget, form = new FormData(element);
     const parameters: Record<string, number> = {};
     if (String(form.get("temperature") || "").trim()) parameters.temperature = Number(form.get("temperature"));
     if (String(form.get("max_output_tokens") || "").trim()) parameters.max_output_tokens = Number(form.get("max_output_tokens"));
-    const payload: Record<string, unknown> = { adapter, model_name: form.get("model_name"), parameters };
+    const payload: Record<string, unknown> = { adapter, model_name: adapter === "mock" ? "fixture-model" : model, parameters };
     if (adapter !== "mock") {
       payload.base_url = baseUrl;
       const key = String(form.get("api_key") || "").trim();
@@ -81,12 +88,31 @@ export function AdminPanel({ session, expired }: { session: Session; expired: ()
         setNotice(result.check.execution_mode === "mock" ? "Local mock verified and activated. No external provider was contacted." : "Connection verified. The system default is now active.");
       } else setError(`${connectionMessage(result.check)} The active configuration was kept.`);
     } catch (err) { failure(err); }
-    finally {
-      const keyField = element.elements.namedItem("api_key");
-      if (keyField instanceof HTMLInputElement) keyField.value = "";
-      setBusy(false);
-    }
+    finally { setBusy(false); }
   }
+
+  async function fetchModels(element: HTMLFormElement | null) {
+    if (!element) return;
+    const form = new FormData(element);
+    const key = String(form.get("api_key") || "").trim();
+    const payload = { adapter, base_url: baseUrl, ...(key ? { api_key: key } : {}) };
+    setListing(true); setError(""); setNotice(""); setCatalog(null); setModel("");
+    try {
+      const result = await api<ModelCatalog>("/admin/llm/models", {
+        method: "POST", body: JSON.stringify(payload),
+      }, session.csrf_token);
+      setCatalog(result);
+      // Preserve an active choice only when the provider actually lists it.
+      const previous = settings?.active?.model_name;
+      setModel(result.items.some((item) => item.id === previous) ? previous! : "");
+      if (!result.items.length) setError("The provider returned no selectable text-generation models for these credentials.");
+    } catch (err) {
+      // A provider's HTTP 403 is returned as 502; only local access denial hides this panel.
+      failure(err);
+    } finally { setListing(false); }
+  }
+
+  function invalidateCatalog() { setCatalog(null); setModel(""); setError(""); setNotice(""); }
 
   async function changeStatus(user: AdminUser) {
     setBusy(true); setError(""); setNotice("");
@@ -113,7 +139,7 @@ export function AdminPanel({ session, expired }: { session: Session; expired: ()
 
   if (!allowed) return <p role="alert" className="error-message">Administrator access is required. <a href="/">Return to your workspace.</a></p>;
   return <div className="admin-panel">
-    <div className="section-heading"><p className="intro">Manage accounts and the default text model for the system.</p><button className="refresh-button" onClick={reload} disabled={busy}>Reload settings</button></div>
+    <div className="section-heading"><p className="intro">Manage accounts and the default text model for the system.</p><button className="refresh-button" onClick={reload} disabled={busy || listing}>Reload settings</button></div>
     {error && <p role="alert" className="error-message">{error}</p>}
     {notice && <p role="status" className="success-message">{notice}</p>}
     {overview && <dl className="admin-stats"><div><dt>Accounts</dt><dd>{overview.users}</dd></div><div><dt>Active accounts</dt><dd>{overview.active_users}</dd></div><div><dt>Projects</dt><dd>{overview.projects}</dd></div><div><dt>Papers</dt><dd>{overview.papers}</dd></div></dl>}
@@ -124,21 +150,24 @@ export function AdminPanel({ session, expired }: { session: Session; expired: ()
           {settings.active ? <><strong>{settings.active.model_name}</strong><p>{settings.active.adapter === "mock" ? "MOCK · local fixture" : `${settings.active.adapter} · connection verified`}</p><p className="muted">{settings.active.base_url ?? "No external endpoint"} · {settings.active.credential_configured ? "Key stored securely" : "No external key"}</p></> : <p>No system provider has been activated.</p>}
         </div>
         <form key={settings.active?.id ?? "empty"} className="provider-form" onSubmit={apply}>
-          <fieldset disabled={busy} className="admin-fields"><legend>New configuration</legend>
+          <fieldset disabled={busy || listing} className="admin-fields"><legend>New configuration</legend>
             <div className="settings-fields"><label>API protocol<select value={adapter} onChange={(event) => {
               const next = event.target.value as SystemAdapter;
-              setAdapter(next); setBaseUrl(next === "gemini" ? geminiBase : "");
+              setAdapter(next); setBaseUrl(next === "gemini" ? geminiBase : ""); invalidateCatalog();
+              if (keyInput.current) keyInput.current.value = "";
             }}><option value="gemini">Google Gemini</option><option value="openai_compatible">OpenAI-compatible · custom endpoint</option><option value="mock">Mock · local fixture</option></select></label>
-              <label>Model ID<input name="model_name" maxLength={200} required defaultValue={settings.active?.model_name ?? ""} placeholder={adapter === "mock" ? "fixture-model" : "Exact provider model ID"} spellCheck={false} /></label></div>
+              <ProviderModelSelect adapter={adapter} catalog={catalog} value={model} onChange={setModel} /></div>
             {adapter !== "mock" && <>
-              <label>Provider API base URL<input name="base_url" type="url" required maxLength={500} value={baseUrl} readOnly={adapter === "gemini"} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.example.com/v1" spellCheck={false} /></label>
+              <label>Provider API base URL<input name="base_url" type="url" required maxLength={500} value={baseUrl} readOnly={adapter === "gemini"} onChange={(event) => { setBaseUrl(event.target.value); invalidateCatalog(); if (keyInput.current) keyInput.current.value = ""; }} placeholder="https://api.example.com/v1" spellCheck={false} /></label>
               <p className="muted">For a compatible provider, enter its public HTTPS API base URL, including its version path. The connection test calls chat/completions. Gemini uses its official endpoint.</p>
-              <label>API key<input name="api_key" type="password" autoComplete="off" maxLength={4096} spellCheck={false} /></label>
+              <label>API key<input ref={keyInput} name="api_key" type="password" autoComplete="off" maxLength={4096} spellCheck={false} onChange={invalidateCatalog} /></label>
               <p className="muted">Enter a new key when changing provider or URL. Leave blank to reuse the stored key only for the same protocol and endpoint. Keys are never shown.</p>
+              <button type="button" className="refresh-button" onClick={(event) => fetchModels(event.currentTarget.form)} disabled={busy || listing || !baseUrl}>{listing ? "Loading models…" : "Load available models"}</button>
+              <p className="muted">{catalog ? `${catalog.items.length} models listed. ` : ""}Listing sends no paper and does not activate settings. {adapter === "gemini" ? "Only models advertising generateContent are shown." : "This provider may also list models that do not support chat/completions."} A successful connection test is still required; listing does not guarantee generation permissions, quota or regional availability.</p>
             </>}
             <div className="settings-fields"><label>Temperature (optional)<input name="temperature" type="number" min={0} max={2} step="0.1" defaultValue={settings.active?.parameters.temperature ?? ""} /></label><label>Output token limit (optional)<input name="max_output_tokens" type="number" min={16} max={8192} step={1} defaultValue={settings.active?.parameters.max_output_tokens ?? ""} /></label></div>
             <p className="muted">{adapter === "mock" ? "This tests only a local fixture. It does not verify a real provider." : "The test sends a fixed connection message and may consume quota or incur charges. Test output is capped at 256 tokens; this is not a guaranteed cost limit."} No paper is sent. The active configuration changes only after a successful test.</p>
-            <button className="primary-button" disabled={busy}>{busy ? "Testing connection…" : "Test connection and apply"}</button>
+            <button className="primary-button" disabled={busy || listing || (adapter !== "mock" && !model)}>{busy ? "Testing connection…" : "Test connection and apply"}</button>
           </fieldset>
         </form>
         <p className="muted">The default applies to text tasks with no personal route. Paper owners must separately allow external processing and approve their analysis plan.</p>
